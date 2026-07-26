@@ -718,7 +718,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
           <div className="absolute bottom-2 left-2 right-2 flex flex-col gap-1.5 z-20 transition-opacity duration-300">
             <div className="flex-1 flex items-center gap-1 px-1">
               <span className="text-[10px] font-mono text-white/60 shrink-0">{format(progress)}</span>
-              <input type="range" min={0} max={duration || 0} value={progress} onInput={handleSeek} onMouseDown={handleSeekStart} onMouseUp={handleSeekEnd} onMouseMove={handleSeekHover} onMouseLeave={handleSeekLeave} className="flex-1 cursor-pointer accent-red-600" />
+              <input type="range" min={0} max={duration || 0} value={progress} onInput={handleSeek} onMouseDown={handleSeekStart} onMouseUp={handleSeekEnd} onMouseMove={handleSeekHover} onMouseLeave={handleSeekLeave} className="flex-1 cursor-pointer" style={{ background: `linear-gradient(to right, #c81e3a ${duration ? (progress/duration)*100 : 0}%, rgba(225,29,72,0.25) ${duration ? (progress/duration)*100 : 0}%)` }} />
               <span className="text-[10px] font-mono text-white/60 shrink-0">{format(duration)}</span>
             </div>
             <div className="flex items-center justify-between px-1">
@@ -889,7 +889,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
           <div className={`absolute bottom-0 left-0 right-0 pt-12 pb-4 px-4 transition-opacity duration-200 pointer-events-none ${showFsControls ? 'opacity-100' : 'opacity-0'}`}>
             <div className="pointer-events-auto">
               <div className="relative mb-2">
-                <input type="range" min={0} max={duration || 0} value={progress} onInput={handleSeek} onMouseDown={handleSeekStart} onMouseUp={handleSeekEnd} onMouseMove={handleSeekHover} onMouseLeave={handleSeekLeave} className="w-full cursor-pointer accent-red-600" />
+                <input type="range" min={0} max={duration || 0} value={progress} onInput={handleSeek} onMouseDown={handleSeekStart} onMouseUp={handleSeekEnd} onMouseMove={handleSeekHover} onMouseLeave={handleSeekLeave} className="w-full cursor-pointer" style={{ background: `linear-gradient(to right, #c81e3a ${duration ? (progress/duration)*100 : 0}%, rgba(225,29,72,0.25) ${duration ? (progress/duration)*100 : 0}%)` }} />
                 {showHoverTime && (
                   <div className="absolute -top-7 -translate-x-1/2 pointer-events-none text-[10px] font-mono text-white/85 bg-surface rounded-md px-1.5 py-0.5 shadow-lg" style={{ left: `${hoverPct * 100}%` }}>
                     {format(hoverTime)}

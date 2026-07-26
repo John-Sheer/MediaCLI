@@ -21,7 +21,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:8787 https://*.youtube.com https://*.googlevideo.com https://lrclib.net https://mediacli-app.web.app; img-src 'self' https://*.ytimg.com https://*.youtube.com data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; media-src 'self' http://127.0.0.1:8787 https://*.googlevideo.com blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:8787 https://*.youtube.com https://*.googlevideo.com https://lrclib.net https://mediacli-app.web.app; img-src 'self' http://127.0.0.1:8787 https://*.ytimg.com https://*.youtube.com data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; media-src 'self' http://127.0.0.1:8787 https://*.googlevideo.com blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
     }
   },
   "bundle": {
