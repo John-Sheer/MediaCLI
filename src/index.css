@@ -1,0 +1,386 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html { margin: 0; padding: 0; overflow: hidden; border: 0; }
+body { margin: 0; padding: 0; overflow: hidden; border: 0; }
+body {
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 400;
+  background: #050508;
+  color: #f1f1f5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: rgba(225, 29, 72, 0.3);
+  color: #fff;
+}
+
+:focus-visible {
+  outline: none;
+}
+
+*:focus {
+  outline: none !important;
+}
+
+input:focus,
+textarea:focus,
+button:focus {
+  outline: none !important;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e1e2e;
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2e2e42;
+}
+
+/* Scrollbar moderne : cachée en permanence */
+.scroll-modern {
+  overflow-y: scroll;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scroll-modern::-webkit-scrollbar {
+  display: none;
+}
+
+/* Auto-scroll au survol des bordures */
+.edge-scroll {
+  position: relative;
+}
+.edge-scroll-zone {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 30px;
+  z-index: 5;
+  pointer-events: auto;
+}
+.edge-scroll-zone-top {
+  top: 0;
+}
+.edge-scroll-zone-bottom {
+  bottom: 0;
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 3px;
+  background: rgba(225, 29, 72, 0.25);
+  border-radius: 2px;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #c81e3a;
+  margin-top: -3.5px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 0 6px rgba(225, 29, 72, 0.4);
+}
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.25);
+  box-shadow: 0 0 12px rgba(225, 29, 72, 0.6);
+}
+input[type="range"]::-moz-range-track {
+  height: 3px;
+  background: rgba(225, 29, 72, 0.25);
+  border-radius: 2px;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #c81e3a;
+  border: none;
+  box-shadow: 0 0 6px rgba(225, 29, 72, 0.4);
+}
+
+.glass {
+  background: linear-gradient(180deg, rgba(20, 20, 30, 0.7), rgba(10, 10, 16, 0.82));
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 2px solid rgba(255, 59, 92, 0.45);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.glass-strong {
+  background: linear-gradient(180deg, rgba(22, 22, 32, 0.92), rgba(10, 10, 16, 0.95));
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  border: 2px solid rgba(255, 59, 92, 0.5);
+  box-shadow: 0 18px 50px -12px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* Variante du lecteur : verre raffiné avec liseré rouge subtil */
+.glass-player {
+  background: linear-gradient(180deg, rgba(24, 24, 34, 0.88), rgba(10, 10, 16, 0.94));
+  backdrop-filter: blur(26px) saturate(160%);
+  -webkit-backdrop-filter: blur(26px) saturate(160%);
+  border: none;
+  border-radius: 22px;
+  box-shadow:
+    0 22px 60px -16px rgba(0, 0, 0, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 28px -10px rgba(255, 59, 92, 0.25);
+}
+
+/* Carte élégante : surface fine + anneau + barre d'accent au survol */
+.chic-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, background 0.2s ease;
+}
+.chic-card:hover {
+  border-color: rgba(255, 59, 92, 0.4);
+  background: rgba(255, 59, 92, 0.04);
+  box-shadow: 0 8px 30px -12px rgba(255, 59, 92, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transform: translateY(-1px);
+}
+
+/* Tuile compacte réutilisable (style Bibliothèque locale) */
+.tile {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  transition: all 0.2s ease;
+  cursor: pointer;
+  overflow: hidden;
+}
+.tile::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: #ff3b5c;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.tile:hover {
+  background: rgba(255, 59, 92, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 59, 92, 0.4);
+}
+.tile:hover::before {
+  opacity: 1;
+}
+.tile:active {
+  transform: scale(0.98);
+}
+
+/* Variante sans anneau ni bordure : fond plat subtil uniquement */
+.tile-clean {
+  background: rgba(255, 255, 255, 0.02);
+  box-shadow: none;
+}
+.tile-clean::before {
+  display: none;
+}
+.tile-clean:hover {
+  background: rgba(255, 59, 92, 0.05);
+  box-shadow: none;
+}
+
+/* Pilule d'onglet active avec halo */
+.tab-pill {
+  transition: all 0.25s ease;
+}
+.tab-pill-active {
+  border-color: rgba(200, 30, 58, 0.45);
+  color: #ff5a72;
+  background: linear-gradient(180deg, rgba(200, 30, 58, 0.12), rgba(200, 30, 58, 0.04));
+  box-shadow: 0 0 16px -4px rgba(200, 30, 58, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.glow-border {
+  position: relative;
+}
+.glow-border::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(225, 29, 72, 0.3), transparent 50%, rgba(225, 29, 72, 0.1));
+  z-index: -1;
+}
+
+/* Overlay modal : fond sombre + grain subtil */
+.modal-overlay {
+  background: radial-gradient(ellipse at center, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.85) 100%);
+  backdrop-filter: blur(8px) saturate(120%);
+  -webkit-backdrop-filter: blur(8px) saturate(120%);
+}
+
+/* Carte modal : verre dark avec halo rouge subtil */
+.modal-card {
+  background: linear-gradient(180deg, rgba(18,18,30,0.97), rgba(10,10,18,0.99));
+  backdrop-filter: blur(32px) saturate(160%);
+  -webkit-backdrop-filter: blur(32px) saturate(160%);
+  border: 1px solid rgba(255,255,255,0.07);
+  box-shadow:
+    0 24px 80px -16px rgba(0,0,0,0.7),
+    0 0 0 1px rgba(200,30,58,0.08),
+    inset 0 1px 0 rgba(255,255,255,0.05);
+}
+
+/* Bouton modal primaire (accent) */
+.modal-btn-primary {
+  background: linear-gradient(180deg, #d93a52, #c81e3a);
+  box-shadow: 0 0 20px -4px rgba(200,30,58,0.5), inset 0 1px 0 rgba(255,255,255,0.1);
+  transition: all 0.2s ease;
+}
+.modal-btn-primary:hover {
+  box-shadow: 0 0 28px -2px rgba(200,30,58,0.7), inset 0 1px 0 rgba(255,255,255,0.12);
+  transform: translateY(-1px);
+}
+.modal-btn-primary:active {
+  transform: scale(0.98);
+}
+
+/* Bouton modal secondaire */
+.modal-btn-secondary {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  transition: all 0.2s ease;
+}
+.modal-btn-secondary:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.12);
+}
+.modal-btn-secondary:active {
+  transform: scale(0.98);
+}
+
+.bg-grain {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
+}
+
+.player-progress {
+  height: 3px;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.player-progress > div {
+  height: 100%;
+  background: linear-gradient(90deg, #ff3b5c, #c81e3a);
+  box-shadow: 0 0 10px rgba(255, 59, 92, 0.6);
+  border-radius: 999px;
+  transition: width 0.18s linear;
+}
+
+.compact-progress {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  outline: none;
+  cursor: pointer;
+  transition: height 0.15s ease;
+}
+.compact-progress:hover {
+  height: 5px;
+}
+.compact-progress::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #c81e3a;
+  border: none;
+  box-shadow: 0 0 6px rgba(200,30,58,0.5);
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.compact-progress:hover::-webkit-slider-thumb {
+  opacity: 1;
+}
+.compact-progress::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #c81e3a;
+  border: none;
+  box-shadow: 0 0 6px rgba(200,30,58,0.5);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.compact-progress:hover::-moz-range-thumb {
+  opacity: 1;
+}
+.compact-progress::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 999px;
+}
+.compact-progress::-moz-range-track {
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+}
+
+input.vol-line { width: 3px !important; accent-color: #c81e3a !important; }
+input.vol-line::-webkit-slider-runnable-track { background: rgba(225,29,72,0.25) !important; border-radius: 0; height: 3px !important; }
+input.vol-line::-moz-range-track { background: rgba(225,29,72,0.25) !important; border-radius: 0; height: 3px !important; }
+input.vol-line::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 3px; height: 10px;
+  background: #c81e3a;
+  border: none; border-radius: 0;
+  cursor: pointer;
+}
+input.vol-line::-moz-range-thumb {
+  width: 3px; height: 10px;
+  background: #c81e3a;
+  border: none; border-radius: 0;
+  cursor: pointer;
+}
+
+@keyframes thumb-progress {
+  0% { width: 8%; }
+  100% { width: 96%; }
+}
+
+@keyframes cursor-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.cli-cursor::after {
+  content: "▌";
+  color: #ff3b5c;
+  animation: cursor-blink 1s step-end infinite;
+  margin-left: 1px;
+  font-weight: 400;
+}

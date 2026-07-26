@@ -1,0 +1,15 @@
+{
+  "version": "0.1.1",
+  "notes": "Correction des bugs — Exe Windows disponible, corrections de stabilité.",
+  "pub_date": "2026-07-26T00:00:00Z",
+  "platforms": {
+    "android-arm64": {
+      "url": "https://mediacli-app.web.app/updates/latest.apk",
+      "signature": ""
+    },
+    "windows-x64": {
+      "url": "https://mediacli-app.web.app/updates/latest-windows.bin",
+      "signature": ""
+    }
+  }
+}

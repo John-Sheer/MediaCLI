@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MediaCLI — Télécharger</title>
+  <link rel="icon" type="image/png" href="icon.png">
+  <meta name="description" content="MediaCLI — Application de musique. Recherchez, écoutez et téléchargez votre musique.">
+  <meta property="og:title" content="MediaCLI">
+  <meta property="og:description" content="Application de musique — Android & Desktop">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://mediacli-app.web.app/icon.png">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+
+    :root{
+      --bg:#000;--surface:#0a0a12;--border:#17172a;
+      --red:#ff3b5c;--red-dim:#c81e3a;--green:#34b88a;
+      --text:#e4e4ed;--muted:#6b6b80;
+    }
+
+    body{
+      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+      background:#000;color:var(--text);
+      min-height:100vh;display:flex;flex-direction:column;align-items:center;
+      -webkit-font-smoothing:antialiased;
+    }
+
+    /* ===== HERO ===== */
+    .hero{
+      width:100%;padding:72px 24px 56px;text-align:center;
+      background:#000;position:relative;overflow:hidden;
+    }
+    .hero::after{
+      content:'';position:absolute;bottom:0;left:0;right:0;height:1px;
+      background:linear-gradient(90deg,transparent,var(--border),transparent);
+    }
+
+    .brand-row{
+      display:flex;align-items:center;justify-content:center;gap:14px;
+      margin-bottom:12px;
+    }
+
+    .logo{width:56px;height:56px;flex-shrink:0;filter:drop-shadow(0 4px 20px rgba(200,30,58,.3))}
+    .logo svg{width:100%;height:100%}
+
+    .brand{font-size:2.6rem;font-weight:700;letter-spacing:-1px}
+    .brand .m{color:rgba(255,255,255,.55);font-weight:400}
+    .brand .c{color:var(--red)}
+
+    .tagline{color:var(--muted);font-size:1.05rem;line-height:1.6;max-width:360px;margin:0 auto 40px}
+
+    /* ===== PLATFORM SELECTOR ===== */
+    .platforms{display:flex;justify-content:center;gap:12px;margin-bottom:32px;flex-wrap:wrap}
+
+    .plat-btn{
+      display:inline-flex;align-items:center;gap:8px;
+      padding:12px 28px;border-radius:10px;
+      font-size:.95rem;font-weight:600;text-decoration:none;
+      transition:all .25s ease;cursor:pointer;border:none;
+    }
+    .plat-btn svg{width:18px;height:18px;flex-shrink:0}
+
+    .plat-android{
+      background:linear-gradient(135deg,var(--red-dim),var(--red));
+      color:#fff;box-shadow:0 4px 24px rgba(200,30,58,.3);
+    }
+    .plat-android:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(200,30,58,.45)}
+    .plat-android:active{transform:translateY(0)}
+
+    .plat-windows{
+      background:var(--surface);color:var(--text);
+      border:1px solid var(--border);
+    }
+    .plat-windows:hover{border-color:rgba(200,30,58,.3);transform:translateY(-2px)}
+
+    .meta{
+      display:flex;flex-direction:column;align-items:center;gap:8px;
+      margin-top:18px;
+    }
+    .version{color:var(--muted);font-size:.78rem}
+    .badge{
+      display:inline-block;padding:3px 10px;
+      background:rgba(255,255,255,.03);border:1px solid var(--border);
+      border-radius:20px;font-size:.7rem;color:var(--muted);
+    }
+    .dl-details{
+      display:flex;gap:16px;flex-wrap:wrap;justify-content:center;
+      margin-top:4px;
+    }
+    .dl-detail{
+      display:flex;align-items:center;gap:5px;
+      font-size:.7rem;color:var(--muted);
+    }
+    .dl-detail svg{width:13px;height:13px;opacity:.5}
+
+    /* ===== SECTION GENERIC ===== */
+    .sep{
+      width:48px;height:1px;margin:52px auto;
+      background:linear-gradient(90deg,transparent,var(--border),transparent);
+    }
+    .sec-label{
+      color:var(--red);font-size:.72rem;font-weight:600;
+      text-transform:uppercase;letter-spacing:2px;
+      text-align:center;margin-bottom:28px;
+    }
+
+    /* ===== FEATURES ===== */
+    .features{
+      max-width:720px;width:100%;padding:0 24px;
+      display:grid;grid-template-columns:repeat(3,1fr);gap:14px;
+    }
+    .feat{
+      background:var(--surface);border:1px solid var(--border);
+      border-radius:14px;padding:22px 18px;
+      transition:border-color .25s,transform .25s;
+    }
+    .feat:hover{border-color:rgba(200,30,58,.25);transform:translateY(-2px)}
+
+    .feat-icon{
+      width:38px;height:38px;border-radius:10px;
+      background:rgba(200,30,58,.08);
+      display:flex;align-items:center;justify-content:center;
+      margin-bottom:14px;
+    }
+    .feat-icon svg{width:18px;height:18px}
+
+    .feat h3{font-size:.88rem;font-weight:600;margin-bottom:6px}
+    .feat p{color:var(--muted);font-size:.8rem;line-height:1.5}
+
+    /* ===== CHANGELOG ===== */
+    .changelog{max-width:720px;width:100%;padding:0 24px 56px}
+    .cl-item{
+      background:var(--surface);border:1px solid var(--border);
+      border-radius:12px;padding:18px 22px;margin-bottom:10px;
+    }
+    .cl-date{
+      color:var(--muted);font-size:.72rem;
+      font-family:'JetBrains Mono',monospace;letter-spacing:.5px;
+    }
+    .cl-notes{color:#999;font-size:.84rem;margin-top:6px;line-height:1.45}
+
+    /* ===== FOOTER ===== */
+    .footer{
+      padding:28px 24px;color:var(--muted);font-size:.72rem;
+      text-align:center;border-top:1px solid var(--border);width:100%;
+      max-width:720px;
+    }
+    .footer a{color:var(--red);text-decoration:none}
+    .footer a:hover{text-decoration:underline}
+
+    /* ===== RESPONSIVE ===== */
+    @media(max-width:600px){
+      .brand{font-size:2rem}
+      .features{grid-template-columns:1fr 1fr;gap:10px}
+      .feat{padding:16px 14px}
+      .plat-btn{padding:11px 22px;font-size:.88rem}
+    }
+    @media(max-width:380px){
+      .features{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+
+  <div class="hero">
+    <div class="brand-row">
+      <div class="logo">
+        <svg viewBox="34 27 64 97">
+          <g>
+            <path d="M66,30 C75,37 86,41 96,43 C96,43 96,68 96,82 C96,102 84,116 66,122 C48,116 36,102 36,82 C36,68 36,43 36,43 C46,41 57,37 66,30 Z" fill="#c81e3a"/>
+            <circle cx="66" cy="76" r="24" fill="none" stroke="#fff" stroke-width="3"/>
+            <path d="M60,66 C60,63 63,61 66,63 L79,72 C82,74 82,78 79,80 L66,89 C63,91 60,89 60,86 Z" fill="#fff"/>
+            <g transform="translate(76,82) scale(1.4)">
+              <path d="M4,9 V5 A2.5,2.5 0 0,1 9,5 V9" fill="none" stroke="#111" stroke-width="1.5"/>
+              <rect x="2" y="9" width="9" height="7" rx="1.5" fill="#111"/>
+              <circle cx="6.5" cy="12.5" r="1.5" fill="#fff"/>
+            </g>
+            <path d="M 85,90.7 A 24,24 0 0,0 88,85.6" fill="none" stroke="#fff" stroke-width="3"/>
+          </g>
+        </svg>
+      </div>
+      <div class="brand"><span class="m">Media</span><span class="c">CLI</span></div>
+    </div>
+    <p class="tagline">Recherchez, écoutez et téléchargez votre musique. Gratuit, sans inscription.</p>
+
+    <div class="platforms">
+      <a href="updates/latest.apk" download="MediaCLI.apk" class="plat-btn plat-android" id="dlAndroid" onclick="dlFeedback(this,'APK',event)">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        Android
+      </a>
+      <a href="updates/latest-windows.bin" download="MediaCLI-Setup.exe" class="plat-btn plat-windows" id="dlWindows" onclick="dlFeedback(this,'Windows')">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        Windows
+      </a>
+    </div>
+
+    <div class="meta">
+      <span class="version" id="versionInfo">Chargement...</span>
+      <div>
+        <span class="badge">Android 7.0+ &middot; Windows 10+</span>
+      </div>
+      <div class="dl-details">
+        <span class="dl-detail">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          APK ~35 Mo
+        </span>
+        <span class="dl-detail">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+          Setup ~110 Mo
+        </span>
+        <span class="dl-detail">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          Gratuit &middot; Pas de pub
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sep"></div>
+
+  <p class="sec-label">Fonctionnalités</p>
+
+  <div class="features">
+    <div class="feat">
+      <div class="feat-icon"><svg fill="none" stroke="#ff3b5c" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></div>
+      <h3>Recherche</h3>
+      <p>Trouvez n'importe quelle chanson ou artiste en un instant.</p>
+    </div>
+    <div class="feat">
+      <div class="feat-icon"><svg fill="none" stroke="#ff3b5c" stroke-width="2" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg></div>
+      <h3>Lecture en continu</h3>
+      <p>Écoutez sans attendre le téléchargement. Gestes tactiles inclus.</p>
+    </div>
+    <div class="feat">
+      <div class="feat-icon"><svg fill="none" stroke="#ff3b5c" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></div>
+      <h3>Téléchargement</h3>
+      <p>Enregistrez en MP3 ou MP4. Fichiers stockés localement.</p>
+    </div>
+    <div class="feat">
+      <div class="feat-icon"><svg fill="none" stroke="#ff3b5c" stroke-width="2" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
+      <h3>Musique locale</h3>
+      <p>Importez et écoutez vos propres fichiers audio.</p>
+    </div>
+    <div class="feat">
+      <div class="feat-icon"><svg fill="none" stroke="#ff3b5c" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div>
+      <h3>Sans inscription</h3>
+      <p>Aucun compte requis. Téléchargez et utilisez, c'est tout.</p>
+    </div>
+    <div class="feat">
+      <div class="feat-icon"><svg fill="none" stroke="#ff3b5c" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+      <h3>VPN intégré</h3>
+      <p>Naviguez en toute confidentialité. Vos données restent privées.</p>
+    </div>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="changelog">
+    <p class="sec-label">Nouveautés</p>
+    <div class="cl-item">
+      <div class="cl-date">v0.1.1 — Juillet 2026</div>
+      <div class="cl-notes">Correction des bugs. Exe Windows disponible, corrections de stabilité.</div>
+    </div>
+    <div class="cl-item">
+      <div class="cl-date">v0.1.0 — Juillet 2026</div>
+      <div class="cl-notes">Première version. Recherche, lecture en continu, téléchargement, playlists, musique locale, gestes tactiles.</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span style="color:rgba(255,255,255,.5)">media</span><span style="color:#ff3b5c;font-weight:700">CLI</span>
+    &copy; 2026 &mdash; <a href="https://john-sheer.free.je/?i=3#accueil">SheeTech</a>
+  </div>
+
+  <script>
+    fetch('updates/latest.json')
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById('versionInfo').textContent = 'Version ' + data.version;
+        if (data.pub_date) {
+          const d = new Date(data.pub_date);
+          document.getElementById('versionInfo').textContent += ' — ' + d.toLocaleDateString('fr-FR');
+        }
+      })
+      .catch(() => {
+        document.getElementById('versionInfo').textContent = 'Version 0.1.0';
+      });
+
+    const origText = {};
+    function dlFeedback(el, name, e) {
+      e.preventDefault();
+      if (!origText[name]) origText[name] = el.innerHTML;
+      el.innerHTML = '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="animation:spin .8s linear infinite"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg> Préparation...';
+      el.style.pointerEvents = 'none';
+
+      var url = el.getAttribute('href');
+      var saveName = el.getAttribute('download');
+
+      fetch(url).then(function(r) {
+        return r.blob();
+      }).then(function(blob) {
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = saveName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+        el.innerHTML = '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg> Téléchargement ' + name + ' lancé';
+        setTimeout(function() { el.innerHTML = origText[name]; el.style.pointerEvents = ''; }, 3000);
+      }).catch(function() {
+        window.location.href = url;
+        setTimeout(function() { el.innerHTML = origText[name]; el.style.pointerEvents = ''; }, 3000);
+      });
+    }
+  </script>
+  <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+</body>
+</html>

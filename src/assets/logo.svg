@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 350" width="680" height="350">
+  <!-- Icône seule -->
+  <rect x="260" y="20" width="160" height="160" rx="40" fill="#161616"/>
+  <g transform="translate(260,20)">
+    <circle cx="66" cy="66" r="54" fill="#c81e3a"/>
+    <path d="M52,42 C52,38 56,36 59,38 L92,62 C95,64 95,68 92,70 L59,94 C56,96 52,94 52,90 Z" fill="#ffffff"/>
+    <circle cx="112" cy="112" r="30" fill="#161616"/>
+    <circle cx="112" cy="112" r="30" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <rect x="98" y="104" width="28" height="24" rx="7" fill="#ffffff"/>
+    <path d="M104,104 v-8 a8,8 0 0,1 16,0 v8" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+  </g>
+
+  <!-- Logotype horizontal -->
+  <rect x="40" y="230" width="600" height="100" rx="16" fill="#161616"/>
+  <g transform="translate(58,246) scale(0.4)">
+    <circle cx="66" cy="66" r="54" fill="#c81e3a"/>
+    <path d="M52,42 C52,38 56,36 59,38 L92,62 C95,64 95,68 92,70 L59,94 C56,96 52,94 52,90 Z" fill="#ffffff"/>
+    <circle cx="112" cy="112" r="30" fill="#161616"/>
+    <circle cx="112" cy="112" r="30" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <rect x="98" y="104" width="28" height="24" rx="7" fill="#ffffff"/>
+    <path d="M104,104 v-8 a8,8 0 0,1 16,0 v8" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+  </g>
+  <text x="150" y="292" font-family="'JetBrains Mono', 'Courier New', monospace" font-size="36" letter-spacing="0.5">
+    <tspan fill="#ffffff">média</tspan><tspan fill="#c81e3a" font-weight="700">CLI</tspan>
+  </text>
+  <rect x="345" y="266" width="8" height="34" fill="#c81e3a"/>
+</svg>

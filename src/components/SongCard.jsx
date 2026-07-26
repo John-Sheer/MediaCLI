@@ -1,0 +1,191 @@
+import { useState } from "react";
+import { Headphones, Music, Loader2, Check, Play, Download, Plus, ListPlus, AudioLines } from "lucide-react";
+
+const THUMB_PROXY = "http://127.0.0.1:8787/thumb?url=";
+
+function formatDuration(seconds) {
+  if (!seconds) return "--:--";
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+export default function SongCard({ song, onPlay, onDownload, status, progress, menuOpen, onMenuToggle, playlists = {}, onAddToPlaylist, onCreateAndAdd, isPlaying }) {
+  const [showPlSub, setShowPlSub] = useState(false);
+
+  const addToPl = (id) => {
+    if (id === "__new") onCreateAndAdd && onCreateAndAdd(song);
+    else onAddToPlaylist && onAddToPlaylist(id, song);
+    setShowPlSub(false);
+    onMenuToggle();
+  };
+
+  const mp3Size = song.duration > 0 ? ((song.duration * 128) / 8 / 1024).toFixed(1) : null;
+  const mp4Size = song.duration > 0 ? ((song.duration * 600) / 8 / 1024).toFixed(1) : null;
+
+  const realSize = (type) => {
+    if (type === "audio") return song.audioSize ? (song.audioSize / 1048576).toFixed(1) : mp3Size;
+    return song.videoSize ? (song.videoSize / 1048576).toFixed(1) : mp4Size;
+  };
+
+  const renderButton = (type, label, Icon) => {
+    const isDownloading = status?.[type] === "downloading";
+    const isDone = status?.[type] === "done";
+    const percent = progress?.[type] || 0;
+    const size = realSize(type);
+
+    return (
+      <button
+        onClick={(e) => { e.stopPropagation(); onDownload(song, type); }}
+        disabled={isDownloading || isDone}
+        title={`Télécharger ${label}`}
+        className={`group/btn relative flex items-center gap-1.5 pl-2 pr-2.5 py-1.5 rounded-lg overflow-hidden transition-all duration-200 active:scale-[0.93] disabled:cursor-default ${
+          isDone
+            ? "text-green-400/90 bg-green-400/[0.08]"
+            : isDownloading
+              ? "text-green-400/90 bg-green-400/[0.06] pb-2.5"
+              : "text-white/25 hover:text-green-400/90 hover:bg-green-400/[0.08]"
+        }`}
+      >
+        {isDownloading ? (
+          <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+        ) : isDone ? (
+          <Check className="w-3 h-3 shrink-0" />
+        ) : (
+          <Icon className="w-3 h-3 shrink-0 transition-transform duration-200 group-hover/btn:scale-110" />
+        )}
+        <span className="text-[10px] font-medium leading-none">{isDownloading ? `${Math.round(percent)}%` : label}</span>
+        {!isDownloading && <span className="text-[9px] leading-none opacity-40 group-hover/btn:opacity-60 transition-opacity">{size} Mo</span>}
+        {isDownloading && (
+          <div className="absolute left-0 right-0 bottom-[3px] h-[2px] bg-white/[0.06] rounded-full overflow-hidden mx-1">
+            <div
+              className="h-full bg-gradient-to-r from-green-500 to-green-300 rounded-full transition-[width] duration-300 ease-out"
+              style={{ width: `${Math.max(3, percent)}%` }}
+            />
+          </div>
+        )}
+      </button>
+    );
+  };
+
+  return (
+    <div className="relative animate-fade-in">
+      <div
+        onClick={() => onPlay(song)}
+        className={`group relative flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl cursor-pointer transition-all duration-200 ${
+          isPlaying
+            ? "bg-accent-red/[0.06] ring-1 ring-accent-red/15"
+            : "bg-transparent hover:bg-white/[0.025]"
+        }`}
+      >
+        {isPlaying && (
+          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full bg-accent-red shadow-[0_0_8px_rgba(200,30,58,0.5)]" />
+        )}
+
+        <div
+          className={`relative shrink-0 w-11 h-11 rounded-xl overflow-hidden flex items-center justify-center transition-all duration-300 ${
+            isPlaying
+              ? "ring-1 ring-accent-red/30 shadow-[0_0_12px_-2px_rgba(200,30,58,0.3)]"
+              : "ring-1 ring-white/[0.06] group-hover:ring-white/[0.12]"
+          }`}
+        >
+          {song.thumbnail ? (
+            <img
+              src={`${THUMB_PROXY}${encodeURIComponent(song.thumbnail)}`}
+              alt=""
+              loading="lazy"
+              className="w-full h-full object-cover"
+              onError={(e) => { e.currentTarget.style.display = "none"; }}
+            />
+          ) : (
+            <div className="w-full h-full bg-white/[0.04] flex items-center justify-center">
+              <Music className="w-4 h-4 text-white/15" />
+            </div>
+          )}
+          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-200 flex items-center justify-center">
+            {isPlaying ? (
+              <AudioLines className="w-4 h-4 text-accent-red opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+            ) : (
+              <Play className="w-4 h-4 text-white opacity-0 group-hover:opacity-90 transition-opacity duration-200" fill="currentColor" />
+            )}
+          </div>
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <p className={`text-[13px] font-medium line-clamp-1 leading-snug transition-colors duration-200 ${
+            isPlaying
+              ? "text-white"
+              : "text-white/70 group-hover:text-white/90"
+          }`}>
+            {song.title}
+          </p>
+          <p className={`text-[11px] truncate mt-0.5 transition-colors duration-200 ${
+            isPlaying ? "text-white/35" : "text-white/20 group-hover:text-white/35"
+          }`}>{song.channel}</p>
+        </div>
+
+        <span className="shrink-0 text-[11px] font-mono text-white/20 group-hover:text-white/35 transition-colors duration-200 tabular-nums">{formatDuration(song.duration)}</span>
+
+        <div className="shrink-0 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+          {renderButton("audio", "MP3", Download)}
+          {renderButton("video", "MP4", Download)}
+        </div>
+      </div>
+
+      {menuOpen && (
+        <div className="absolute right-2 top-2 z-30 min-w-[200px] bg-surface/95 backdrop-blur-xl border border-white/[0.08] rounded-xl p-1.5 shadow-2xl animate-fade-in-down origin-top-right">
+          <button
+            onClick={(e) => { e.stopPropagation(); onPlay(song); onMenuToggle(); }}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-white/70 hover:bg-accent-red/10 hover:text-accent-red transition-all duration-150"
+          >
+            <Headphones className="w-3.5 h-3.5" />
+            Écouter
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDownload(song, "audio"); onMenuToggle(); }}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-white/70 hover:bg-accent-red/10 hover:text-accent-red transition-all duration-150"
+          >
+            <Music className="w-3.5 h-3.5" />
+            Télécharger audio
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDownload(song, "video"); onMenuToggle(); }}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-white/70 hover:bg-accent-red/10 hover:text-accent-red transition-all duration-150"
+          >
+            <Music className="w-3.5 h-3.5" />
+            Télécharger vidéo
+          </button>
+          <div className="my-1 h-px bg-white/[0.06]" />
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowPlSub((s) => !s); }}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-white/70 hover:bg-accent-red/10 hover:text-accent-red transition-all duration-150"
+          >
+            <ListPlus className="w-3.5 h-3.5" />
+            Ajouter à une playlist
+          </button>
+          {showPlSub && (
+            <div className="max-h-40 overflow-y-auto scroll-modern pl-2 pr-1 py-1 space-y-0.5">
+              <button
+                onClick={(e) => { e.stopPropagation(); addToPl("__new"); }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-accent-red hover:bg-accent-red/10 transition-all duration-150"
+              >
+                <Plus className="w-3 h-3" />
+                Nouvelle playlist…
+              </button>
+              {Object.values(playlists).map((pl) => (
+                <button
+                  key={pl.id}
+                  onClick={(e) => { e.stopPropagation(); addToPl(pl.id); }}
+                  className="w-full flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg text-xs text-white/70 hover:bg-white/[0.06] transition-all duration-150"
+                >
+                  <span className="truncate">{pl.name}</span>
+                  <span className="text-[9px] font-mono text-muted/50 shrink-0">{pl.tracks.length}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

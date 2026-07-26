@@ -1,0 +1,54 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
+  "productName": "MediaCLI",
+  "version": "0.1.1",
+  "identifier": "com.johnsheer.mediacli",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "MediaCLI",
+        "width": 900,
+        "height": 700,
+        "resizable": true,
+        "decorations": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:8787 https://*.youtube.com https://*.googlevideo.com https://lrclib.net https://mediacli-app.web.app; img-src 'self' https://*.ytimg.com https://*.youtube.com data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; media-src 'self' http://127.0.0.1:8787 https://*.googlevideo.com blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png",
+      "icons/icon.ico"
+    ],
+    "resources": ["resources/ffmpeg.exe", "resources/yt-dlp.exe", "resources/tor/tor.exe", "resources/tor/data/geoip", "resources/tor/data/geoip6"],
+    "externalBin": []
+  },
+  "plugins": {
+    "shell": {
+      "open": true
+    },
+    "dialog": null,
+    "updater": {
+      "endpoints": [
+        "https://mediacli-app.web.app/updates/latest.json"
+      ],
+      "pubkey": "",
+      "windows": {
+        "title": "Mise à jour MediaCLI"
+      }
+    }
+  }
+}

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <rect width="48" height="48" rx="10" fill="#0f0f13"/>
+  <text x="24" y="32" font-family="Inter,system-ui,sans-serif" font-size="26" font-weight="700" fill="#e11d48" text-anchor="middle">M</text>
+  <text x="32" y="34" font-family="monospace" font-size="12" font-weight="400" fill="#e11d48" opacity="0.6">_</text>
+</svg>
