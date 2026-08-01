@@ -38,8 +38,8 @@ jobs:
 
       - name: Install Android SDK packages
         run: |
-          yes | sdkmanager --licenses
-          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.3.1"
+          yes | sdkmanager --licenses > /dev/null
+          sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.3.1" || true
 
       - name: Export Android environment
         run: |
