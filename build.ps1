@@ -19,6 +19,17 @@ Remove-Item -Recurse -Force "src-tauri\target\release" -ErrorAction SilentlyCont
 npm run tauri build
 if ($LASTEXITCODE -ne 0) { Write-Output "ECHEC build tauri"; Pop-Location; exit 1 }
 
+Write-Output "[3b/5] Préparation Android (copie de la lib native sans lien symbolique)..."
+$jniDir = Join-Path $root "src-tauri\gen\android\app\src\main\jniLibs\arm64-v8a"
+if (!(Test-Path $jniDir)) { New-Item -ItemType Directory -Force -Path $jniDir | Out-Null }
+$srcLib = Join-Path $root "src-tauri\target\aarch64-linux-android\release\libmedia_cli_lib.so"
+$dstLib = Join-Path $jniDir "libmedia_cli_lib.so"
+if (Test-Path $srcLib) {
+  Copy-Item -Force $srcLib $dstLib
+} else {
+  Write-Output "ATTENTION: bibliothèque native introuvable à $srcLib"
+}
+
 Write-Output "[4/5] Sync portable..."
 $releaseDir = Join-Path $root "src-tauri\target\release"
 $exe = Get-ChildItem -LiteralPath $releaseDir -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "*diaCLI.exe" -and -not $_.PSIsContainer } | Select-Object -First 1

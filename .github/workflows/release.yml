@@ -58,6 +58,8 @@ jobs:
           cargo install cargo-ndk
           npm run build
           npx tauri android build --target aarch64
+          mkdir -p src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a
+          cp src-tauri/target/aarch64-linux-android/release/libmedia_cli_lib.so src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a/libmedia_cli_lib.so
 
       - name: Check APK output
         run: |
