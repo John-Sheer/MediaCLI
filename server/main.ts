@@ -1,6 +1,7 @@
 import { searchAll } from "./search.ts";
 import { downloadAndConvert } from "./download.ts";
 import { youtubeiStream } from "./youtubei.ts";
+import { createScanFoldersResponse } from "./scanFolders.ts";
 
 const PORT = 8787;
 const OUTPUT_DIR = Deno.env.get("MEDIACLI_OUTPUT_DIR") || "C:\\MediaCLI";
@@ -523,10 +524,6 @@ Deno.serve({ port: PORT, onListen: () => {} }, async (req) => {
     if (home) {
       for (const d of standard) roots.push(`${home}\\${d}`);
     }
-    // Tous les lecteurs disponibles (A:..Z:) sauf C: deja couvert par le profil.
-    // Détection async avec timeout court pour ne pas bloquer sur un lecteur lent/réseau.
-    // On n'ajoute que les lecteurs répondant vite ; les lecteurs lents/réseau sont ignorés
-    // pour garder le scan rapide et fiable.
     for (let c = 65; c <= 90; c++) {
       const letter = `${String.fromCharCode(c)}:`;
       if (letter === "C:") continue;
@@ -574,86 +571,65 @@ Deno.serve({ port: PORT, onListen: () => {} }, async (req) => {
     const MAX = 2000;
     const MAX_DEPTH = 4;
 
-    // Réponse en flux SSE : on émet chaque dossier au fil de l'eau
-    const corsForSSE = getCorsHeaders(req.headers.get("origin"));
-    const headers = new Headers({
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
-      ...corsForSSE,
-    });
-    const body = new ReadableStream({
-      async start(controller) {
-        const send = (event: string, data: unknown) => {
-          controller.enqueue(new TextEncoder().encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
-        };
+    const readDirSafe = async (base: string): Promise<{ name: string; isDirectory: boolean }[]> => {
+      const timeout = new Promise<{ name: string; isDirectory: boolean }[]>((resolve) => setTimeout(() => resolve([]), 1500));
+      const run = (async () => {
+        const out: { name: string; isDirectory: boolean }[] = [];
         try {
-          const readDirSafe = async (base: string): Promise<{ name: string; isDirectory: boolean }[]> => {
-            const timeout = new Promise<{ name: string; isDirectory: boolean }[]>((resolve) => setTimeout(() => resolve([]), 1500));
-            const run = (async () => {
-              const out: { name: string; isDirectory: boolean }[] = [];
-              try {
-                for await (const entry of Deno.readDir(base)) {
-                  out.push({ name: entry.name, isDirectory: entry.isDirectory === true });
-                }
-              } catch {}
-              return out;
-            })();
-            return Promise.race([run, timeout]);
-          };
-          const walk = async (base: string, depth: number): Promise<boolean> => {
-            if (dirs.length >= MAX || depth > MAX_DEPTH) return false;
-            let entries: { name: string; isDirectory: boolean }[] = [];
-            try {
-              entries = await readDirSafe(base);
-            } catch {
-              return false;
-            }
-            const info = seen.get(base) ?? { hasAudio: false, hasVideo: false, count: 0, kids: 0 };
-            let hasMediaChild = false;
-            for (const entry of entries) {
-              if (dirs.length >= MAX) break;
-              const full = `${base}\\${entry.name}`;
-              if (entry.isDirectory) {
-                if (exclude.has(entry.name.toLowerCase())) continue;
-                const childHasMedia = await walk(full, depth + 1);
-                if (childHasMedia) hasMediaChild = true;
-              } else if (entry.isDirectory === false) {
-                const ext = entry.name.toLowerCase().split(".").pop() ?? "";
-                if (mediaExt.includes(ext)) {
-                  if (audioExt.includes(ext)) info.hasAudio = true;
-                  if (videoExt.includes(ext)) info.hasVideo = true;
-                  info.count++;
-                }
-              }
-            }
-            info.kids = hasMediaChild ? 1 : 0;
-            seen.set(base, info);
-            return info.count > 0 || hasMediaChild;
-          };
-          for (const r of roots) {
-            if (dirs.length >= MAX) break;
-            const isDrive = /^[A-Z]:\\?$/.test(r);
-            await walk(r, isDrive ? DRIVE_DEPTH - 2 : 0);
+          for await (const entry of Deno.readDir(base)) {
+            out.push({ name: entry.name, isDirectory: entry.isDirectory === true });
           }
-          for (const [path, info] of seen.entries()) {
-            if (dirs.length >= MAX) break;
-            if (info.count > 0) {
-              const folder = { path, name: path.split("\\").pop() || path, ...info };
-              dirs.push(folder);
-              send("folder", folder);
-            }
+        } catch {}
+        return out;
+      })();
+      return Promise.race([run, timeout]);
+    };
+
+    const walk = async (base: string, depth: number): Promise<boolean> => {
+      if (dirs.length >= MAX || depth > MAX_DEPTH) return false;
+      let entries: { name: string; isDirectory: boolean }[] = [];
+      try {
+        entries = await readDirSafe(base);
+      } catch {
+        return false;
+      }
+      const info = seen.get(base) ?? { hasAudio: false, hasVideo: false, count: 0, kids: 0 };
+      let hasMediaChild = false;
+      for (const entry of entries) {
+        if (dirs.length >= MAX) break;
+        const full = `${base}\\${entry.name}`;
+        if (entry.isDirectory) {
+          if (exclude.has(entry.name.toLowerCase())) continue;
+          const childHasMedia = await walk(full, depth + 1);
+          if (childHasMedia) hasMediaChild = true;
+        } else if (entry.isDirectory === false) {
+          const ext = entry.name.toLowerCase().split(".").pop() ?? "";
+          if (mediaExt.includes(ext)) {
+            if (audioExt.includes(ext)) info.hasAudio = true;
+            if (videoExt.includes(ext)) info.hasVideo = true;
+            info.count++;
           }
-          dirs.sort((a, b) => a.path.localeCompare(b.path));
-          send("done", { folders: dirs });
-        } catch (err) {
-          send("error", { error: String(err) });
-        } finally {
-          try { controller.close(); } catch {}
         }
-      },
-    });
-    return new Response(body, { headers });
+      }
+      info.kids = hasMediaChild ? 1 : 0;
+      seen.set(base, info);
+      return info.count > 0 || hasMediaChild;
+    };
+
+    for (const r of roots) {
+      if (dirs.length >= MAX) break;
+      const isDrive = /^[A-Z]:\\?$/.test(r);
+      await walk(r, isDrive ? DRIVE_DEPTH - 2 : 0);
+    }
+    for (const [path, info] of seen.entries()) {
+      if (dirs.length >= MAX) break;
+      if (info.count > 0) {
+        dirs.push({ path, name: path.split("\\").pop() || path, hasAudio: info.hasAudio, hasVideo: info.hasVideo, count: info.count });
+      }
+    }
+    dirs.sort((a, b) => a.path.localeCompare(b.path));
+
+    return createScanFoldersResponse(req, dirs);
   }
 
   if (url.pathname === "/ping" && req.method === "GET") {

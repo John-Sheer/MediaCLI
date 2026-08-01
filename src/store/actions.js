@@ -88,14 +88,36 @@ export function useActions() {
       if (navigator.userAgent.includes("Android")) {
         try { await invoke("request_android_storage_permission"); } catch {}
       }
-      const res = await fetch("http://127.0.0.1:8787/scan-folders");
-      const data = await res.json().catch(() => ({}));
-      const ok = res.ok;
-      if (!ok || data.error) {
-        dispatch({ type: "LOCAL_SCAN_ERROR", error: data.error || "Impossible de scanner les dossiers." });
+
+      const res = await fetch("http://127.0.0.1:8787/scan-folders", {
+        headers: { Accept: "application/json, text/event-stream" },
+      });
+      const contentType = res.headers.get("content-type") || "";
+      let payload = {};
+
+      if (contentType.includes("text/event-stream")) {
+        const text = await res.text();
+        const folders = [];
+        for (const chunk of text.split("\n\n")) {
+          const line = chunk.split("\n").find((entry) => entry.startsWith("data: "));
+          if (!line) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data?.folders) folders.push(...data.folders);
+            else if (data?.path) folders.push(data);
+          } catch {}
+        }
+        payload = { folders };
+      } else {
+        payload = await res.json().catch(() => ({}));
+      }
+
+      if (!res.ok || payload.error) {
+        dispatch({ type: "LOCAL_SCAN_ERROR", error: payload.error || "Impossible de scanner les dossiers." });
         return;
       }
-      const folders = data.folders || [];
+
+      const folders = payload.folders || [];
       if (folders.length === 0) {
         if (navigator.userAgent.includes("Android")) {
           try { await api.requestPermissions(); } catch {}
@@ -105,7 +127,7 @@ export function useActions() {
           error: "Aucun dossier trouvé. Sur Android, autorisez l'accès aux fichiers dans les paramètres, puis réessayez.",
         });
       } else {
-        folders.forEach(f => dispatch({ type: "LOCAL_SCAN_PROGRESS", folder: f }));
+        folders.forEach((f) => dispatch({ type: "LOCAL_SCAN_PROGRESS", folder: f }));
         dispatch({ type: "LOCAL_SCAN_SUCCESS", folders });
       }
     } catch {
