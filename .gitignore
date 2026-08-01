@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Tauri
+src-tauri/target/
+src-tauri/binaries/
+*.msi
+*.nsis
+*.exe
+*.apk
+*.bin
+
+# Logs
+tauri_dev_err.txt
+tauri_dev_log.txt
+*.log
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Deno
+deno.lock
+
+# Environment
+.env
+.env.*
+.env.deploy
