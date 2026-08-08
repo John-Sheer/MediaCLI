@@ -27,8 +27,8 @@ export default function HomeIdleContent({ onSearch, onQueryChange }) {
 
       <div className="w-full max-w-lg">
         <div className="flex items-center justify-center gap-2 mb-3">
-          <Sparkles className="w-3 h-3 text-white/15" />
-          <p className="text-[10px] text-white/20 uppercase tracking-[0.2em]">Explorer par catégorie</p>
+          <Sparkles className="w-3 h-3 text-white/80" />
+          <p className="text-[10px] text-white/80 uppercase tracking-[0.2em]">Explorer par catégorie</p>
         </div>
         <div className="flex flex-wrap justify-center gap-2">
           {CATEGORIES.map((cat) => {
@@ -37,7 +37,7 @@ export default function HomeIdleContent({ onSearch, onQueryChange }) {
               <button
                 key={cat.label}
                 onClick={() => pickCategory(cat)}
-                className="group/chip inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.02] ring-1 ring-white/[0.05] text-[12px] text-white/40 hover:text-white hover:ring-accent-red/25 hover:bg-accent-red/[0.04] hover:shadow-[0_0_20px_-6px_rgba(200,30,58,0.2)] transition-all duration-300 active:scale-95"
+                className="group/chip inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.02] ring-1 ring-white/[0.05] text-[12px] text-white/80 hover:text-white hover:ring-accent-red/25 hover:bg-accent-red/[0.04] hover:shadow-[0_0_20px_-6px_rgba(200,30,58,0.2)] transition-all duration-300 active:scale-95"
               >
                 <Icon className="w-3.5 h-3.5 opacity-30 group-hover/chip:opacity-60 transition-opacity duration-300" />
                 {cat.label}
@@ -49,14 +49,14 @@ export default function HomeIdleContent({ onSearch, onQueryChange }) {
 
       <div className="w-full max-w-lg">
         <div className="flex items-center justify-center gap-2 mb-3">
-          <Hand className="w-3 h-3 text-white/15" />
-          <p className="text-[10px] text-white/20 uppercase tracking-[0.2em]">Gestes tactile</p>
+          <Hand className="w-3 h-3 text-white/80" />
+          <p className="text-[10px] text-white/80 uppercase tracking-[0.2em]">Gestes tactile</p>
         </div>
         <div className="grid grid-cols-2 gap-x-8 gap-y-2 max-w-sm mx-auto">
           {GESTURES.map((s) => (
             <div key={s.key} className="flex items-center justify-between gap-3">
-              <kbd className="text-[10px] text-white/20 bg-white/[0.03] px-2 py-0.5 rounded-md border border-white/[0.05] shrink-0">{s.key}</kbd>
-              <span className="text-[11px] text-white/15 truncate">{s.action}</span>
+              <kbd className="text-[10px] text-white/80 bg-white/[0.03] px-2 py-0.5 rounded-md border border-white/[0.05] shrink-0">{s.key}</kbd>
+              <span className="text-[11px] text-white/80 truncate">{s.action}</span>
             </div>
           ))}
         </div>

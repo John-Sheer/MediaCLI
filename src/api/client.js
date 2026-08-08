@@ -32,6 +32,10 @@ export const api = {
     return `${API_BASE}/${useTor ? "stream-tor" : "stream"}?id=${encodeURIComponent(id)}`;
   },
 
+  async preloadStream(id) {
+    return getJson("/preload-stream", { id });
+  },
+
   async localStreamUrl(path) {
     return `${API_BASE}/local?path=${encodeURIComponent(path)}`;
   },
@@ -45,7 +49,7 @@ export const api = {
   },
 
   async openFolder(type) {
-    return postJson("/open-folder", { type });
+    return postJson("/open-folder", { folder: type });
   },
 
   async progress(id) {

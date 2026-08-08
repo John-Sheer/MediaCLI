@@ -19,19 +19,19 @@ export function TitleBar({ onAbout }) {
       <div className="flex items-center gap-1">
         <button
           onClick={minimize}
-          className="p-1.5 rounded-md text-white/40 hover:text-white hover:bg-white/[0.08] transition-colors"
+          className="p-1.5 rounded-md text-white/80 hover:text-white hover:bg-white/[0.08] transition-colors"
         >
           <Minus className="w-3.5 h-3.5" />
         </button>
         <button
           onClick={toggleMaximize}
-          className="p-1.5 rounded-md text-white/40 hover:text-white hover:bg-white/[0.08] transition-colors"
+          className="p-1.5 rounded-md text-white/80 hover:text-white hover:bg-white/[0.08] transition-colors"
         >
           {maximized ? <Minimize2 className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
         </button>
         <button
           onClick={close}
-          className="p-1.5 rounded-md text-white/40 hover:text-white hover:bg-red-500/20 hover:text-red-400 transition-colors"
+          className="p-1.5 rounded-md text-white/80 hover:text-white hover:bg-red-500/20 hover:text-red-400 transition-colors"
         >
           <X className="w-3.5 h-3.5" />
         </button>

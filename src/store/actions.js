@@ -2,16 +2,51 @@ import { api, friendlyError, SERVER_UNREACHABLE } from "../api/client.js";
 import { invoke } from "@tauri-apps/api/core";
 import { useStore } from "./store.jsx";
 
+const mergeFolderFiles = (lists) => {
+  const seen = new Map();
+  for (const files of lists) {
+    for (const f of files || []) {
+      if (!seen.has(f.path)) seen.set(f.path, f);
+    }
+  }
+  return [...seen.values()].sort((x, y) => x.name.localeCompare(y.name));
+};
+
 export function useActions() {
   const { state, dispatch } = useStore();
+
+  let warmToken = 0;
+
+  const warmStreams = async (results) => {
+    if (state.torActive) return;
+    const token = ++warmToken;
+    const ids = (results || [])
+      .map((r) => r.id)
+      .filter((id) => id && /^[A-Za-z0-9_-]{11}$/.test(id))
+      .slice(0, 10);
+    if (!ids.length) return;
+    let i = 0;
+    const worker = async () => {
+      while (i < ids.length) {
+        const id = ids[i++];
+        if (token !== warmToken) return;
+        try {
+          await api.preloadStream(id);
+        } catch {}
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]);
+  };
 
   const search = async (query) => {
     if (!query.trim()) return;
     dispatch({ type: "SEARCH_START" });
     try {
       const data = await api.search(query);
-      if (Array.isArray(data)) dispatch({ type: "SEARCH_SUCCESS", results: data });
-      else dispatch({ type: "SEARCH_ERROR", error: friendlyError(data.error) || "Erreur inconnue du serveur" });
+      if (Array.isArray(data)) {
+        dispatch({ type: "SEARCH_SUCCESS", results: data });
+        warmStreams(data);
+      } else dispatch({ type: "SEARCH_ERROR", error: friendlyError(data.error) || "Erreur inconnue du serveur" });
     } catch (err) {
       console.error("Erreur de recherche :", err);
       dispatch({ type: "SEARCH_ERROR", error: SERVER_UNREACHABLE });
@@ -84,52 +119,120 @@ export function useActions() {
 
   const scanFolders = async () => {
     dispatch({ type: "LOCAL_SCAN_START" });
-    try {
-      if (navigator.userAgent.includes("Android")) {
-        try { await invoke("request_android_storage_permission"); } catch {}
-      }
+    const isAndroid = navigator.userAgent.includes("Android");
 
-      const res = await fetch("http://127.0.0.1:8787/scan-folders", {
-        headers: { Accept: "application/json, text/event-stream" },
-      });
+    // Lit une réponse SSE ou JSON depuis /scan-folders.
+    // Retourne { folders } ou { error }.
+    const doScan = async () => {
+      let res;
+      try {
+        res = await fetch("http://127.0.0.1:8787/scan-folders", {
+          headers: { Accept: "application/json, text/event-stream" },
+        });
+      } catch {
+        return { error: "Impossible de contacter le serveur de scan." };
+      }
       const contentType = res.headers.get("content-type") || "";
-      let payload = {};
 
       if (contentType.includes("text/event-stream")) {
-        const text = await res.text();
+        // Lecture streaming ligne par ligne via ReadableStream
         const folders = [];
-        for (const chunk of text.split("\n\n")) {
-          const line = chunk.split("\n").find((entry) => entry.startsWith("data: "));
-          if (!line) continue;
-          try {
-            const data = JSON.parse(line.slice(6));
-            if (data?.folders) folders.push(...data.folders);
-            else if (data?.path) folders.push(data);
-          } catch {}
-        }
-        payload = { folders };
-      } else {
-        payload = await res.json().catch(() => ({}));
+        try {
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buf = "";
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            // Traiter les blocs SSE séparés par \n\n
+            const blocks = buf.split("\n\n");
+            buf = blocks.pop() ?? ""; // conserver le dernier bloc incomplet
+            for (const block of blocks) {
+              const line = block.split("\n").find((l) => l.startsWith("data: "));
+              if (!line) continue;
+              try {
+                const data = JSON.parse(line.slice(6));
+                if (Array.isArray(data?.folders)) folders.push(...data.folders);
+                else if (data?.path) folders.push(data);
+              } catch {}
+            }
+          }
+          // Traiter le reste du buffer
+          if (buf) {
+            const line = buf.split("\n").find((l) => l.startsWith("data: "));
+            if (line) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                if (Array.isArray(data?.folders)) folders.push(...data.folders);
+                else if (data?.path) folders.push(data);
+              } catch {}
+            }
+          }
+        } catch {}
+        return { folders };
       }
 
+      // Réponse JSON classique
+      let payload = {};
+      try { payload = await res.json(); } catch {}
       if (!res.ok || payload.error) {
-        dispatch({ type: "LOCAL_SCAN_ERROR", error: payload.error || "Impossible de scanner les dossiers." });
+        return { error: payload.error || "Impossible de scanner les dossiers." };
+      }
+      return { folders: payload.folders || [] };
+    };
+
+    const applyFolders = (folders) => {
+      folders.forEach((f) => dispatch({ type: "LOCAL_SCAN_PROGRESS", folder: f }));
+      dispatch({ type: "LOCAL_SCAN_SUCCESS", folders });
+    };
+    const waitVisible = () =>
+      new Promise((resolve) => {
+        if (document.visibilityState === "visible") return resolve();
+        const onVis = () => {
+          if (document.visibilityState === "visible") {
+            document.removeEventListener("visibilitychange", onVis);
+            resolve();
+          }
+        };
+        document.addEventListener("visibilitychange", onVis);
+        setTimeout(resolve, 30000);
+      });
+
+    try {
+      if (isAndroid) {
+        // Demande la permission média (READ_MEDIA_AUDIO/VIDEO) une seule fois.
+        try { await invoke("request_android_storage_permission"); } catch {}
+      }
+      const first = await doScan();
+      if (first.error) {
+        dispatch({ type: "LOCAL_SCAN_ERROR", error: first.error });
         return;
       }
-
-      const folders = payload.folders || [];
-      if (folders.length === 0) {
-        if (navigator.userAgent.includes("Android")) {
-          try { await api.requestPermissions(); } catch {}
-        }
-        dispatch({
-          type: "LOCAL_SCAN_ERROR",
-          error: "Aucun dossier trouvé. Sur Android, autorisez l'accès aux fichiers dans les paramètres, puis réessayez.",
-        });
-      } else {
-        folders.forEach((f) => dispatch({ type: "LOCAL_SCAN_PROGRESS", folder: f }));
-        dispatch({ type: "LOCAL_SCAN_SUCCESS", folders });
+      if (first.folders.length > 0) {
+        applyFolders(first.folders);
+        return;
       }
+      // Scan vide : sur Android, ouvrir les réglages "Tous les fichiers" puis
+      // rescan APRÈS le retour dans l'app (le WebView est suspendu tant que la
+      // page de réglages est affichée, un fetch direct serait décalé).
+      if (isAndroid) {
+        try { await api.requestPermissions(); } catch {}
+        await waitVisible();
+        const second = await doScan();
+        if (second.error) {
+          dispatch({ type: "LOCAL_SCAN_ERROR", error: second.error });
+          return;
+        }
+        if (second.folders.length > 0) {
+          applyFolders(second.folders);
+          return;
+        }
+      }
+      dispatch({
+        type: "LOCAL_SCAN_ERROR",
+        error: "Aucun dossier trouvé. Sur Android, autorisez l'accès « Tous les fichiers » dans les paramètres ouverts, puis réessayez (redémarrez l'app si nécessaire).",
+      });
     } catch {
       dispatch({ type: "LOCAL_SCAN_ERROR", error: "Impossible de scanner les dossiers." });
     }
@@ -144,7 +247,7 @@ export function useActions() {
         dispatch({ type: "LOCAL_FOLDER_ERROR", error: err });
         return;
       }
-      const merged = [...(a.files || []), ...(v.files || [])].sort((x, y) => x.name.localeCompare(y.name));
+      const merged = mergeFolderFiles([a.files, v.files]);
       dispatch({ type: "LOCAL_FILES_LOADED", files: merged });
     } catch {
       dispatch({ type: "LOCAL_FOLDER_ERROR", error: "Impossible de lister le dossier." });
@@ -169,7 +272,7 @@ export function useActions() {
         dispatch({ type: "LOCAL_FOLDER_ERROR", error: err });
         return;
       }
-      const merged = [...(a.files || []), ...(v.files || [])].sort((x, y) => x.name.localeCompare(y.name));
+      const merged = mergeFolderFiles([a.files, v.files]);
       if (merged.length === 0) {
         dispatch({ type: "LOCAL_FOLDER_ERROR", error: "Aucun fichier audio ou vidéo dans ce dossier." });
         return;

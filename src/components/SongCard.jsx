@@ -44,7 +44,7 @@ export default function SongCard({ song, onPlay, onDownload, status, progress, m
             ? "text-green-400/90 bg-green-400/[0.08]"
             : isDownloading
               ? "text-green-400/90 bg-green-400/[0.06] pb-2.5"
-              : "text-white/25 hover:text-green-400/90 hover:bg-green-400/[0.08]"
+              : "text-white/80 hover:text-green-400/90 hover:bg-green-400/[0.08]"
         }`}
       >
         {isDownloading ? (
@@ -55,7 +55,7 @@ export default function SongCard({ song, onPlay, onDownload, status, progress, m
           <Icon className="w-3 h-3 shrink-0 transition-transform duration-200 group-hover/btn:scale-110" />
         )}
         <span className="text-[10px] font-medium leading-none">{isDownloading ? `${Math.round(percent)}%` : label}</span>
-        {!isDownloading && <span className="text-[9px] leading-none opacity-40 group-hover/btn:opacity-60 transition-opacity">{size} Mo</span>}
+        {!isDownloading && <span className="text-[9px] leading-none text-green-400/85 group-hover/btn:text-green-300 transition-colors">{size} Mo</span>}
         {isDownloading && (
           <div className="absolute left-0 right-0 bottom-[3px] h-[2px] bg-white/[0.06] rounded-full overflow-hidden mx-1">
             <div
@@ -72,10 +72,10 @@ export default function SongCard({ song, onPlay, onDownload, status, progress, m
     <div className="relative animate-fade-in">
       <div
         onClick={() => onPlay(song)}
-        className={`group relative flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl cursor-pointer transition-all duration-200 ${
+        className={`group relative flex flex-wrap items-center gap-x-2.5 gap-y-1.5 px-3 py-2 rounded-xl cursor-pointer transition-all duration-200 border ${
           isPlaying
-            ? "bg-accent-red/[0.06] ring-1 ring-accent-red/15"
-            : "bg-transparent hover:bg-white/[0.025]"
+            ? "bg-accent-red/[0.07] border-accent-red/40 shadow-[0_0_16px_-6px_rgba(200,30,58,0.45)]"
+            : "bg-panel/70 border-white/[0.07] hover:border-white/[0.18] hover:bg-white/[0.03]"
         }`}
       >
         {isPlaying && (
@@ -99,7 +99,7 @@ export default function SongCard({ song, onPlay, onDownload, status, progress, m
             />
           ) : (
             <div className="w-full h-full bg-white/[0.04] flex items-center justify-center">
-              <Music className="w-4 h-4 text-white/15" />
+              <Music className="w-4 h-4 text-white/80" />
             </div>
           )}
           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-200 flex items-center justify-center">
@@ -115,18 +115,18 @@ export default function SongCard({ song, onPlay, onDownload, status, progress, m
           <p className={`text-[13px] font-medium line-clamp-1 leading-snug transition-colors duration-200 ${
             isPlaying
               ? "text-white"
-              : "text-white/70 group-hover:text-white/90"
+              : "text-white/90 group-hover:text-white/90"
           }`}>
             {song.title}
           </p>
           <p className={`text-[11px] truncate mt-0.5 transition-colors duration-200 ${
-            isPlaying ? "text-white/35" : "text-white/20 group-hover:text-white/35"
+            isPlaying ? "text-green-400/90" : "text-green-400/85 group-hover:text-green-300"
           }`}>{song.channel}</p>
         </div>
 
-        <span className="shrink-0 text-[11px] font-mono text-white/20 group-hover:text-white/35 transition-colors duration-200 tabular-nums">{formatDuration(song.duration)}</span>
+        <span className="shrink-0 text-[11px] font-mono text-green-400/90 group-hover:text-green-300 transition-colors duration-200 tabular-nums">{formatDuration(song.duration)}</span>
 
-        <div className="shrink-0 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-1.5 w-full sm:w-auto sm:ml-auto sm:justify-start justify-end" onClick={(e) => e.stopPropagation()}>
           {renderButton("audio", "MP3", Download)}
           {renderButton("video", "MP4", Download)}
         </div>
@@ -136,21 +136,21 @@ export default function SongCard({ song, onPlay, onDownload, status, progress, m
         <div className="absolute right-2 top-2 z-30 min-w-[200px] bg-surface/95 backdrop-blur-xl border border-white/[0.08] rounded-xl p-1.5 shadow-2xl animate-fade-in-down origin-top-right">
           <button
             onClick={(e) => { e.stopPropagation(); onPlay(song); onMenuToggle(); }}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-white/70 hover:bg-accent-red/10 hover:text-accent-red transition-all duration-150"
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-white/90 hover:bg-accent-red/10 hover:text-accent-red transition-all duration-150"
           >
             <Headphones className="w-3.5 h-3.5" />
             Écouter
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onDownload(song, "audio"); onMenuToggle(); }}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-white/70 hover:bg-accent-red/10 hover:text-accent-red transition-all duration-150"
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-white/90 hover:bg-accent-red/10 hover:text-accent-red transition-all duration-150"
           >
             <Music className="w-3.5 h-3.5" />
             Télécharger audio
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onDownload(song, "video"); onMenuToggle(); }}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-white/70 hover:bg-accent-red/10 hover:text-accent-red transition-all duration-150"
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-white/90 hover:bg-accent-red/10 hover:text-accent-red transition-all duration-150"
           >
             <Music className="w-3.5 h-3.5" />
             Télécharger vidéo
@@ -158,7 +158,7 @@ export default function SongCard({ song, onPlay, onDownload, status, progress, m
           <div className="my-1 h-px bg-white/[0.06]" />
           <button
             onClick={(e) => { e.stopPropagation(); setShowPlSub((s) => !s); }}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-white/70 hover:bg-accent-red/10 hover:text-accent-red transition-all duration-150"
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-white/90 hover:bg-accent-red/10 hover:text-accent-red transition-all duration-150"
           >
             <ListPlus className="w-3.5 h-3.5" />
             Ajouter à une playlist
@@ -176,10 +176,10 @@ export default function SongCard({ song, onPlay, onDownload, status, progress, m
                 <button
                   key={pl.id}
                   onClick={(e) => { e.stopPropagation(); addToPl(pl.id); }}
-                  className="w-full flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg text-xs text-white/70 hover:bg-white/[0.06] transition-all duration-150"
+                  className="w-full flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg text-xs text-white/90 hover:bg-white/[0.06] transition-all duration-150"
                 >
                   <span className="truncate">{pl.name}</span>
-                  <span className="text-[9px] font-mono text-muted/50 shrink-0">{pl.tracks.length}</span>
+                  <span className="text-[9px] font-mono text-muted/80 shrink-0">{pl.tracks.length}</span>
                 </button>
               ))}
             </div>

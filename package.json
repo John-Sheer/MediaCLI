@@ -1,6 +1,6 @@
 {
   "name": "media-cli",
-  "version": "0.1.1",
+  "version": "0.1.8",
   "description": "MediaCLI — Application de recherche, téléchargement et lecture de musique via YouTube",
   "type": "module",
   "scripts": {

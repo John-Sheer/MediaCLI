@@ -86,16 +86,22 @@ const EXCLUDED_DIRS: &[&str] = &[
     "program files", "program files (x86)", "programdata", "$recycle.bin",
     "system volume information", "msocache", "recovery", "boot", "efi",
     "node_modules", ".git", ".tauri", "cache", "temp",
+    // Android : dossiers lourds/vides à ne jamais parcourir
+    "android", ".android", "android data", "android/obb", "obb", "data",
+    "lockscreen", "thumbnails", ".thumbnails", ".cache", ".nomedia", ".trash",
+    "backup", "backups", "whatsapp", "tencent", "miui", ".xiaomi", ".coloros",
+    "backups", "log", "logs", "crashpad", "metainfo", "grpc",
 ];
 
 const WEB_CLIENT_NAME: &str = "WEB";
 const WEB_CLIENT_VERSION: &str = "2.20240610.00.00";
 const ANDROID_CLIENT_NAME: &str = "ANDROID";
-const ANDROID_CLIENT_VERSION: &str = "19.09.37";
+const ANDROID_CLIENT_VERSION: &str = "20.12.34";
+const ANDROID_CLIENT_UA: &str = "com.google.android.youtube/20.12.34 (Linux; U; Android 12) gzip";
 const TV_EMBEDDED_CLIENT_NAME: &str = "TVHTML5_SIMPLY_EMBEDDED_PLAYER";
 const TV_EMBEDDED_CLIENT_VERSION: &str = "2.0";
 const IOS_CLIENT_NAME: &str = "IOS";
-const IOS_CLIENT_VERSION: &str = "19.09.3";
+const IOS_CLIENT_VERSION: &str = "21.10.2";
 const IOS_DEVICE_MODEL: &str = "iPhone14,3";
 
 #[derive(Clone)]
@@ -149,6 +155,7 @@ struct LocalParams {
 
 #[derive(Deserialize)]
 struct DownloadBody {
+    #[serde(alias = "videoId")]
     video_id: String,
     title: String,
     format: Option<String>,
@@ -156,6 +163,7 @@ struct DownloadBody {
 
 #[derive(Deserialize)]
 struct OpenFolderBody {
+    #[serde(alias = "type")]
     folder: Option<String>,
 }
 
@@ -216,6 +224,13 @@ fn json_response(data: impl Serialize, status: StatusCode, origin: Option<&str>)
     headers.insert("content-type", "application/json".parse().unwrap());
     let body = serde_json::to_string(&data).unwrap_or_default();
     (status, headers, body).into_response()
+}
+
+async fn handle_options(headers: HeaderMap) -> Response {
+    let origin = headers.get("origin").and_then(|v| v.to_str().ok());
+    let mut h = cors_headers_map(origin);
+    h.insert("access-control-max-age", "86400".parse().unwrap());
+    (StatusCode::OK, h, "").into_response()
 }
 
 // ─── SECURITY ───
@@ -346,6 +361,7 @@ async fn innertube_request(
         .header("X-YouTube-Client-Version", WEB_CLIENT_VERSION)
         .header("Origin", "https://www.youtube.com")
         .body(body.to_string())
+        .timeout(Duration::from_secs(15))
         .send()
         .await
         .map_err(|e| format!("InnerTube request failed: {}", e))?;
@@ -370,13 +386,14 @@ async fn innertube_android_request(
     let mut body = serde_json::json!({
         "context": {
             "client": {
-                "clientName": "ANDROID_TESTSUITE",
-                "clientVersion": "1.9",
-                "androidSdkVersion": 30,
+                "clientName": ANDROID_CLIENT_NAME,
+                "clientVersion": ANDROID_CLIENT_VERSION,
+                "androidSdkVersion": 31,
                 "hl": "en",
                 "gl": "US",
                 "osName": "Android",
-                "osVersion": "11"
+                "osVersion": "12",
+                "userAgent": ANDROID_CLIENT_UA
             }
         },
         "contentCheckOk": true,
@@ -390,10 +407,11 @@ async fn innertube_android_request(
     let resp = client
         .post(&url)
         .header("Content-Type", "application/json")
-        .header("User-Agent", "com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip")
-        .header("X-YouTube-Client-Name", "30")
-        .header("X-YouTube-Client-Version", "1.9")
+        .header("User-Agent", ANDROID_CLIENT_UA)
+        .header("X-YouTube-Client-Name", "3")
+        .header("X-YouTube-Client-Version", ANDROID_CLIENT_VERSION)
         .body(body.to_string())
+        .timeout(Duration::from_secs(15))
         .send()
         .await
         .map_err(|e| format!("InnerTube Android request failed: {}", e))?;
@@ -445,6 +463,7 @@ async fn innertube_client_request(
         .header("X-YouTube-Client-Name", client_number)
         .header("X-YouTube-Client-Version", client_version)
         .body(body.to_string())
+        .timeout(Duration::from_secs(15))
         .send()
         .await
         .map_err(|e| format!("InnerTube {} request failed: {}", client_name, e))?;
@@ -475,6 +494,23 @@ async fn youtubei_search(
     limit: usize,
 ) -> Result<Vec<SearchResult>, String> {
     let data = innertube_request(client, key, "search", serde_json::json!({ "query": query })).await?;
+    Ok(parse_search_response(&data, limit))
+}
+
+// Recherche via le client ANDROID d'InnerTube : c'est le même chemin qui
+// fonctionne pour le streaming (le client WEB est de plus en plus bloqué par
+// YouTube). Utilisé en secours quand la recherche WEB échoue.
+async fn youtubei_search_android(
+    client: &reqwest::Client,
+    key: &str,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<SearchResult>, String> {
+    let data = innertube_android_request(client, "search", key, serde_json::json!({ "query": query })).await?;
+    Ok(parse_search_response(&data, limit))
+}
+
+fn parse_search_response(data: &serde_json::Value, limit: usize) -> Vec<SearchResult> {
     let mut results = Vec::new();
     let sections = data
         .pointer("/contents/twoColumnSearchResultsRenderer/primaryContents/sectionListRenderer/contents")
@@ -551,7 +587,7 @@ async fn youtubei_search(
             break;
         }
     }
-    Ok(results)
+    results
 }
 
 // ─── SIGNATURE DECRYPTION ───
@@ -914,6 +950,28 @@ async fn resolve_stream_url(state: &ServerState, id: &str) -> Option<String> {
     }
 
     if !tor {
+        match youtubei_stream_android(client, id, key).await {
+            Ok(info) if !info.url.is_empty() => {
+                server_log!("[server] resolved URL from Android InnerTube for {}", id);
+                return Some(info.url);
+            }
+            Ok(_) => { server_log!("[server] Android InnerTube returned empty url for {}", id); }
+            Err(e) => { server_log!("[server] Android InnerTube error for {}: {}", id, e); }
+        }
+    }
+
+    if !tor {
+        match youtubei_stream_ios(client, id, key).await {
+            Ok(info) if !info.url.is_empty() => {
+                server_log!("[server] resolved URL from iOS InnerTube for {}", id);
+                return Some(info.url);
+            }
+            Ok(_) => { server_log!("[server] iOS InnerTube returned empty url for {}", id); }
+            Err(e) => { server_log!("[server] iOS InnerTube error for {}: {}", id, e); }
+        }
+    }
+
+    if !tor {
         match youtubei_stream_tv(client, id, key).await {
             Ok(info) if !info.url.is_empty() => {
                 server_log!("[server] resolved URL from TV for {}", id);
@@ -932,28 +990,6 @@ async fn resolve_stream_url(state: &ServerState, id: &str) -> Option<String> {
             }
             Ok(_) => { server_log!("[server] Web Embedded returned empty url for {}", id); }
             Err(e) => { server_log!("[server] Web Embedded error for {}: {}", id, e); }
-        }
-    }
-
-    if !tor {
-        match youtubei_stream_ios(client, id, key).await {
-            Ok(info) if !info.url.is_empty() => {
-                server_log!("[server] resolved URL from iOS InnerTube for {}", id);
-                return Some(info.url);
-            }
-            Ok(_) => { server_log!("[server] iOS InnerTube returned empty url for {}", id); }
-            Err(e) => { server_log!("[server] iOS InnerTube error for {}: {}", id, e); }
-        }
-    }
-
-    if !tor {
-        match youtubei_stream_android(client, id, key).await {
-            Ok(info) if !info.url.is_empty() => {
-                server_log!("[server] resolved URL from Android InnerTube for {}", id);
-                return Some(info.url);
-            }
-            Ok(_) => { server_log!("[server] Android InnerTube returned empty url for {}", id); }
-            Err(e) => { server_log!("[server] Android InnerTube error for {}: {}", id, e); }
         }
     }
 
@@ -1029,20 +1065,10 @@ async fn proxy_youtube_stream(
             h.insert("accept-ranges", "bytes".parse().unwrap());
             h.insert("cache-control", "no-store".parse().unwrap());
             h.extend(cors_headers_map(origin));
-            match resp.bytes().await {
-                Ok(bytes) => {
-                    server_log!("[proxy] OK {} bytes, status={}", bytes.len(), code);
-                    (status, h, bytes.to_vec()).into_response()
-                }
-                Err(e) => {
-                    server_log!("[proxy] bytes error: {}", e);
-                    json_response(
-                        serde_json::json!({"error": "Erreur de proxy stream."}),
-                        StatusCode::BAD_GATEWAY,
-                        origin,
-                    )
-                }
-            }
+            let chunked = resp.bytes_stream().map(|c| {
+                c.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            });
+            (status, h, Body::from_stream(chunked)).into_response()
         }
         Err(e) => {
             server_log!("[proxy] send error: {}", e);
@@ -1242,8 +1268,8 @@ async fn youtubei_stream_ios(
     let data = innertube_client_request(
         client, "player", api_key,
         IOS_CLIENT_NAME, IOS_CLIENT_VERSION, "5",
-        "com.google.ios.youtube/19.09.3 (iPhone14,3; U; CPU iOS 15_6 like Mac OS X)",
-        serde_json::json!({ "videoId": video_id, "deviceMake": "Apple", "deviceModel": IOS_DEVICE_MODEL, "osName": "iPhone", "osVersion": "15.6.0.19G71" }),
+        "com.google.ios.youtube/21.10.2 (iPhone14,3; U; CPU iOS 18_2 like Mac OS X)",
+        serde_json::json!({ "videoId": video_id, "deviceMake": "Apple", "deviceModel": IOS_DEVICE_MODEL, "osName": "iPhone", "osVersion": "18.2" }),
     ).await?;
     let status = data.get("playabilityStatus").and_then(|s| s.get("status")).and_then(|v| v.as_str()).unwrap_or("unknown");
     server_log!("[ios-player] status: {}", status);
@@ -1531,6 +1557,7 @@ async fn try_stream_ytdlp(
     let ytdlp = yt_dlp_path(state);
     let url = format!("https://www.youtube.com/watch?v={}", video_id);
     let tor = *state.tor_enabled.read().await;
+    server_log!("[ytdlp] binary={} exists={}", ytdlp, std::path::Path::new(&ytdlp).exists());
     let mut args = vec![
         &url,
         "-f", format,
@@ -1554,14 +1581,25 @@ async fn try_stream_ytdlp(
             .output(),
     )
     .await
-    .ok()?
     .ok()?;
-    if output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if !stdout.is_empty() {
-            return Some(stdout);
+    let out = match output {
+        Ok(o) => o,
+        Err(e) => {
+            server_log!("[ytdlp] spawn error: {}", e);
+            return None;
         }
+    };
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        server_log!("[ytdlp] exit={:?} stderr={}", out.status.code(), &stderr[..stderr.len().min(400)]);
+        return None;
     }
+    let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if !stdout.is_empty() {
+        server_log!("[ytdlp] resolved via yt-dlp for {}", video_id);
+        return Some(stdout);
+    }
+    server_log!("[ytdlp] empty stdout");
     None
 }
 
@@ -1589,14 +1627,16 @@ async fn handle_search(
     let client = state.client.clone();
     let results = if let Some(ref key) = state.innertube_key {
         match youtubei_search(&client, key, &q, 15).await {
-            Ok(r) => {
-                if !r.is_empty() {
-                    Ok(r)
-                } else {
-                    Err("No results".into())
+            Ok(r) if !r.is_empty() => Ok(r),
+            Ok(_) | Err(_) => {
+                // Le client WEB est souvent bloqué : on retente via le client
+                // ANDROID (le même que le streaming), qui est plus fiable.
+                match youtubei_search_android(&client, key, &q, 15).await {
+                    Ok(r) if !r.is_empty() => Ok(r),
+                    Ok(_) => Err("No results".into()),
+                    Err(e) => Err(e),
                 }
             }
-            Err(e) => Err(e),
         }
     } else {
         Err("YOUTUBE_INNERTUBE_KEY not configured".into())
@@ -1745,6 +1785,39 @@ async fn handle_stream_tor(
     proxy_youtube_stream(&state.client, &stream_url, range, origin).await
 }
 
+async fn handle_preload_stream(
+    State(state): State<ServerState>,
+    Query(params): Query<IdParams>,
+    headers: HeaderMap,
+) -> Response {
+    let origin = headers.get("origin").and_then(|v| v.to_str().ok());
+    let id = match params.id {
+        Some(id) if is_valid_video_id(&id) => id,
+        _ => return json_response(serde_json::json!({"error": "videoId invalide."}), StatusCode::BAD_REQUEST, origin),
+    };
+    {
+        let cache = state.stream_cache.read().await;
+        if let Some((ts, _)) = cache.get(&id) {
+            if ts.elapsed() < Duration::from_secs(1200) {
+                return json_response(serde_json::json!({"ok": true, "cached": true}), StatusCode::OK, origin);
+            }
+        }
+    }
+    match resolve_stream_url(&state, &id).await {
+        Some(url) => {
+            state.stream_cache.write().await.insert(id.clone(), (Instant::now(), url.clone()));
+            json_response(serde_json::json!({"ok": true, "cached": false}), StatusCode::OK, origin)
+        }
+        None => {
+            json_response(
+                serde_json::json!({"error": "Aucun flux vidéo disponible."}),
+                StatusCode::BAD_GATEWAY,
+                origin,
+            )
+        }
+    }
+}
+
 async fn handle_local(
     State(state): State<ServerState>,
     Query(params): Query<LocalParams>,
@@ -1839,7 +1912,10 @@ async fn handle_download(
     } else {
         state.output_dir.join("Audio")
     };
-    let _ = fs::create_dir_all(&target_dir);
+    if let Err(e) = fs::create_dir_all(&target_dir) {
+        state.progress_map.write().await.remove(&status_key);
+        return json_response(serde_json::json!({"success": false, "error": format!("Impossible de créer le dossier de destination: {}", e)}), StatusCode::INTERNAL_SERVER_ERROR, origin);
+    }
     let safe_title = sanitize_filename(&body.title);
 
     let ytdlp = yt_dlp_path(&state);
@@ -1968,9 +2044,16 @@ async fn handle_download(
                     Ok(resp) if resp.status().is_success() => {
                         match resp.bytes().await {
                             Ok(bytes) => {
-                                let _ = fs::write(&final_path, &bytes);
-                                state.progress_map.write().await.insert(status_key, 100.0);
-                                json_response(serde_json::json!({"success": true, "path": final_path.to_string_lossy()}), StatusCode::OK, origin)
+                                match fs::write(&final_path, &bytes) {
+                                    Ok(_) => {
+                                        state.progress_map.write().await.insert(status_key, 100.0);
+                                        json_response(serde_json::json!({"success": true, "path": final_path.to_string_lossy()}), StatusCode::OK, origin)
+                                    }
+                                    Err(e) => {
+                                        state.progress_map.write().await.remove(&status_key);
+                                        json_response(serde_json::json!({"success": false, "error": format!("Erreur d'écriture du fichier: {}", e)}), StatusCode::INTERNAL_SERVER_ERROR, origin)
+                                    }
+                                }
                             }
                             Err(e) => {
                                 state.progress_map.write().await.remove(&status_key);
@@ -2019,11 +2102,19 @@ async fn handle_open_folder(
     {
         let _ = new_cmd("explorer").arg(&target).spawn();
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "android")]
+    {
+        server_log!("[open-folder] Android: dossier = {}", target.display());
+    }
+    #[cfg(all(not(target_os = "windows"), not(target_os = "android")))]
     {
         let _ = Command::new("xdg-open").arg(&target).spawn();
     }
-    json_response(serde_json::json!({"ok": true}), StatusCode::OK, origin)
+    json_response(
+        serde_json::json!({"ok": true, "path": target.to_string_lossy()}),
+        StatusCode::OK,
+        origin,
+    )
 }
 
 async fn handle_list_folder(
@@ -2196,8 +2287,9 @@ fn scan_walk(
     seen: &mut HashMap<String, (bool, bool, usize)>,
     max: usize,
     max_depth: usize,
+    budget: &mut ScanBudget,
 ) -> bool {
-    if dirs.len() >= max || depth > max_depth {
+    if dirs.len() >= max || depth > max_depth || budget.take() {
         return false;
     }
     let entries = match fs::read_dir(base) {
@@ -2207,7 +2299,7 @@ fn scan_walk(
     let mut has_media_child = false;
     let base_key = base.to_string_lossy().to_string();
     for entry in entries.flatten() {
-        if dirs.len() >= max {
+        if dirs.len() >= max || budget.take() {
             break;
         }
         let name = entry.file_name();
@@ -2217,7 +2309,7 @@ fn scan_walk(
             if EXCLUDED_DIRS.contains(&name_str.to_lowercase().as_str()) {
                 continue;
             }
-            if scan_walk(&path, depth + 1, dirs, seen, max, max_depth) {
+            if scan_walk(&path, depth + 1, dirs, seen, max, max_depth, budget) {
                 has_media_child = true;
             }
         } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
@@ -2241,10 +2333,43 @@ async fn handle_scan_folders(
     headers: HeaderMap,
 ) -> Response {
     let origin = headers.get("origin").and_then(|v| v.to_str().ok());
+    let dirs = tokio::task::spawn_blocking(run_scan_folders)
+        .await
+        .unwrap_or_default();
+    json_response(serde_json::json!({"folders": dirs}), StatusCode::OK, origin)
+}
+
+struct ScanBudget {
+    entries_left: usize,
+    start: Instant,
+    max_elapsed: Duration,
+}
+
+impl ScanBudget {
+    fn new() -> Self {
+        Self {
+            entries_left: 500_000,
+            start: Instant::now(),
+            max_elapsed: Duration::from_secs(10),
+        }
+    }
+    // Consomme un "coup" (une entrée du filesystem). Renvoie true quand le
+    // budget est épuisé : le walk doit s'arrêter là.
+    fn take(&mut self) -> bool {
+        if self.entries_left == 0 || self.start.elapsed() > self.max_elapsed {
+            return true;
+        }
+        self.entries_left -= 1;
+        false
+    }
+}
+
+fn run_scan_folders() -> Vec<FolderInfo> {
     let mut dirs: Vec<FolderInfo> = Vec::new();
     let mut seen: HashMap<String, (bool, bool, usize)> = HashMap::new();
     let max = 5000;
     let max_depth = 6;
+    let mut budget = ScanBudget::new();
 
     let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).unwrap_or_default();
     let mut roots: Vec<PathBuf> = Vec::new();
@@ -2266,7 +2391,19 @@ async fn handle_scan_folders(
     }
     #[cfg(not(target_os = "windows"))]
     {
-        for p in &["/storage/emulated/0/Music", "/storage/emulated/0/Movies", "/storage/emulated/0/Download", "/storage/emulated/0/DCIM", "/storage/emulated/0/Pictures", "/storage/emulated/0"] {
+        // On scanner les dossiers "classiques" D'ABORD (rapides, ils couvrent
+        // la plupart des médias), puis la racine /storage/emulated/0 EN DERNIER
+        // pour attraper les dossiers persos. Le budget (ScanBudget) borne le
+        // walk sur la racine : sans lui, parcourir tout le stockage faisait
+        // paraître le scan "bloqué".
+        for p in &[
+            "/storage/emulated/0/Music",
+            "/storage/emulated/0/Movies",
+            "/storage/emulated/0/Download",
+            "/storage/emulated/0/DCIM",
+            "/storage/emulated/0/Pictures",
+            "/storage/emulated/0",
+        ] {
             let root = PathBuf::from(p);
             if root.exists() {
                 roots.push(root);
@@ -2275,8 +2412,10 @@ async fn handle_scan_folders(
     }
 
     for r in &roots {
-        if dirs.len() >= max { break; }
-        scan_walk(r, 0, &mut dirs, &mut seen, max, max_depth);
+        if dirs.len() >= max || budget.take() {
+            break;
+        }
+        scan_walk(r, 0, &mut dirs, &mut seen, max, max_depth, &mut budget);
     }
 
     for (path, (has_audio, has_video, count)) in seen.iter() {
@@ -2293,7 +2432,7 @@ async fn handle_scan_folders(
         }
     }
     dirs.sort_by(|a, b| a.path.cmp(&b.path));
-    json_response(serde_json::json!({"folders": dirs}), StatusCode::OK, origin)
+    dirs
 }
 
 async fn handle_ping(
@@ -2415,6 +2554,7 @@ pub async fn start_server(output_dir: PathBuf, resource_dir: Option<PathBuf>) {
 
     let client = reqwest::Client::builder()
         .danger_accept_invalid_certs(true)
+        .connect_timeout(Duration::from_secs(10))
         .build()
         .unwrap_or_else(|_| reqwest::Client::new());
 
@@ -2437,13 +2577,14 @@ pub async fn start_server(output_dir: PathBuf, resource_dir: Option<PathBuf>) {
         .route("/thumb", get(handle_thumb))
         .route("/stream", get(handle_stream))
         .route("/stream-tor", get(handle_stream_tor))
+        .route("/preload-stream", get(handle_preload_stream))
         .route("/local", get(handle_local))
         .route("/list-folder", get(handle_list_folder))
         .route("/scan-folders", get(handle_scan_folders))
-        .route("/download", post(handle_download))
+        .route("/download", post(handle_download).options(handle_options))
         .route("/progress", get(handle_progress))
-        .route("/open-folder", post(handle_open_folder))
-        .route("/proxy", post(handle_proxy))
+        .route("/open-folder", post(handle_open_folder).options(handle_options))
+        .route("/proxy", post(handle_proxy).options(handle_options))
         .route("/proxy-status", get(handle_proxy_status))
         .route("/user-dirs", get(handle_user_dirs))
         .route("/ping", get(handle_ping))

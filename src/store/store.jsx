@@ -227,7 +227,7 @@ function reducer(state, action) {
       return { ...state, downloadProgress: { ...state.downloadProgress, [action.key]: action.progress } };
 
     case "CREATE_PLAYLIST": {
-      const id = `pl_${Date.now()}`;
+      const id = action.id || `pl_${Date.now()}`;
       const next = { ...state.playlists, [id]: { id, name: action.name || "Nouvelle playlist", tracks: [] } };
       persistPlaylists(next);
       return { ...state, playlists: next };

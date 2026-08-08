@@ -2,7 +2,6 @@ import { FolderOpen, AlertCircle, RefreshCw, Music } from "lucide-react";
 import SearchBar from "./SearchBar.jsx";
 import SongCard from "./SongCard.jsx";
 import HomeIdleContent, { addRecentSearch } from "./HomeIdleContent.jsx";
-import { api } from "../api/client.js";
 
 function LoadingState() {
   return (
@@ -13,8 +12,8 @@ function LoadingState() {
         <div className="absolute inset-2 rounded-full border border-transparent border-b-white/20 animate-spin" style={{ animationDirection: "reverse", animationDuration: "1.5s" }} />
       </div>
       <div>
-        <p className="text-[13px] text-white/50 font-medium">Recherche en cours</p>
-        <p className="text-[11px] text-white/20 mt-1 font-mono">Patientez un instant…</p>
+        <p className="text-[13px] text-white/80 font-medium">Recherche en cours</p>
+        <p className="text-[11px] text-white/80 mt-1 font-mono">Patientez un instant…</p>
       </div>
     </div>
   );
@@ -24,15 +23,15 @@ function ErrorState({ error, onRetry }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center animate-fade-in-up">
       <div className="w-12 h-12 rounded-2xl bg-accent-red/[0.06] ring-1 ring-accent-red/15 flex items-center justify-center">
-        <AlertCircle className="w-5 h-5 text-accent-red/60" />
+        <AlertCircle className="w-5 h-5 text-accent-red/90" />
       </div>
       <div>
-        <p className="text-[13px] text-white/60 font-medium">Oups, une erreur</p>
-        <p className="text-[11px] text-white/25 mt-1 max-w-[260px] leading-relaxed">{error}</p>
+        <p className="text-[13px] text-white/85 font-medium">Oups, une erreur</p>
+        <p className="text-[11px] text-white/80 mt-1 max-w-[260px] leading-relaxed">{error}</p>
       </div>
       <button
         onClick={onRetry}
-        className="mt-1 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-[12px] font-medium text-accent-red/80 hover:text-accent-red ring-1 ring-accent-red/15 hover:ring-accent-red/30 hover:bg-accent-red/[0.05] transition-all duration-300 active:scale-95"
+        className="mt-1 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-[12px] font-medium text-accent-red/90 hover:text-accent-red ring-1 ring-accent-red/15 hover:ring-accent-red/30 hover:bg-accent-red/[0.05] transition-all duration-300 active:scale-95"
       >
         <RefreshCw className="w-3.5 h-3.5" />
         Réessayer
@@ -41,7 +40,7 @@ function ErrorState({ error, onRetry }) {
   );
 }
 
-export function StreamingView({ state, onSearch, onPlay, onDownload, onQueryChange, onMenuToggle, onAddToPlaylist, onCreateAndAdd, onResume }) {
+export function StreamingView({ state, onSearch, onPlay, onDownload, onQueryChange, onMenuToggle, onAddToPlaylist, onCreateAndAdd, onOpenDownloads, onResume }) {
   const { results, loading, searchError, query, menuSongId, downloadStatus, downloadProgress, playlists, currentSong } = state;
   const centered = results.length === 0 && !loading && !searchError;
   const activeCount = Object.values(downloadStatus).filter((s) => s === "downloading").length;
@@ -73,11 +72,11 @@ export function StreamingView({ state, onSearch, onPlay, onDownload, onQueryChan
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <span className="text-[11px] text-white/35 font-medium">
+                <span className="text-[11px] text-white/80 font-medium">
                   {results.length} résultat{results.length > 1 ? "s" : ""}
                 </span>
                 {activeCount > 0 && (
-                  <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-accent-red/80">
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-accent-red/90">
                     <span className="relative flex h-2 w-2">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent-red/40" />
                       <span className="relative inline-flex rounded-full h-2 w-2 bg-accent-red" />
@@ -87,9 +86,9 @@ export function StreamingView({ state, onSearch, onPlay, onDownload, onQueryChan
                 )}
               </div>
               <button
-                onClick={() => api.openFolder("all")}
+                onClick={() => onOpenDownloads && onOpenDownloads()}
                 title="Ouvrir le dossier des téléchargements"
-                className="flex items-center gap-1.5 text-[11px] text-white/20 hover:text-white/45 transition-colors duration-200"
+                className="flex items-center gap-1.5 text-[11px] text-white/80 hover:text-white/80 transition-colors duration-200"
               >
                 <FolderOpen className="w-3.5 h-3.5" />
                 Dossier
@@ -97,7 +96,7 @@ export function StreamingView({ state, onSearch, onPlay, onDownload, onQueryChan
             </div>
           </div>
 
-          <div className="space-y-1 px-1 animate-fade-in-up" onMouseLeave={() => onMenuToggle(null)}>
+          <div className="space-y-1.5 px-3 animate-fade-in-up" onMouseLeave={() => onMenuToggle(null)}>
             {results.map((song) => (
               <SongCard
                 key={song.id}

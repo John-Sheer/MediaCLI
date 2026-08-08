@@ -58,7 +58,7 @@ export function HomeTabs({ homeTab, onSwitch, playlistCount }) {
         <ListMusic className="w-3.5 h-3.5" />
         Playlists
         {playlistCount > 0 && (
-          <span className="text-[9px] opacity-50">{playlistCount}</span>
+          <span className="text-[9px] opacity-90">{playlistCount}</span>
         )}
       </button>
     </div>

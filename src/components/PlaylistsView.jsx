@@ -14,15 +14,15 @@ function PlaylistCard({ id, playlist, onPlay, onDelete, onOpen }) {
           <img src={"http://127.0.0.1:8787/thumb?url=" + encodeURIComponent(firstThumb)} className="w-full h-full object-cover" alt="" />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <ListMusic className="w-5 h-5 text-white/20" />
+            <ListMusic className="w-5 h-5 text-white/80" />
           </div>
         )}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-[12px] font-semibold text-white/85 truncate group-hover:text-white transition-colors">
+        <p className="text-[12px] font-semibold text-white/90 truncate group-hover:text-white transition-colors">
           {playlist.name}
         </p>
-        <p className="text-[10px] text-white/35 mt-0.5">
+        <p className="text-[10px] text-white/80 mt-0.5">
           {trackCount} titre{trackCount !== 1 ? "s" : ""}
         </p>
       </div>
@@ -36,7 +36,7 @@ function PlaylistCard({ id, playlist, onPlay, onDelete, onOpen }) {
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(id); }}
-          className="p-2 rounded-lg bg-white/[0.04] text-white/30 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+          className="p-2 rounded-lg bg-white/[0.04] text-white/80 hover:text-red-400 hover:bg-red-400/10 transition-colors"
           title="Supprimer"
         >
           <Trash2 className="w-3.5 h-3.5" />
@@ -54,10 +54,10 @@ export default function PlaylistsView({ playlists, onPlay, onDelete, onCreate })
       <section className="relative flex-1 min-h-0">
         <div className="flex flex-col items-center justify-center py-24 text-center animate-fade-in-up">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-b from-white/10 to-white/5 ring-1 ring-white/15 flex items-center justify-center mb-4">
-            <ListMusic className="w-6 h-6 text-white/40" />
+            <ListMusic className="w-6 h-6 text-white/80" />
           </div>
-          <p className="text-sm text-white/60 font-medium">Aucune playlist</p>
-          <p className="text-[11px] text-muted/50 mt-1.5 max-w-xs leading-relaxed">
+          <p className="text-sm text-white/85 font-medium">Aucune playlist</p>
+          <p className="text-[11px] text-muted/80 mt-1.5 max-w-xs leading-relaxed">
             Créez une playlist depuis la file d'attente ou le menu contextuel d'un titre.
           </p>
           <button
@@ -75,12 +75,12 @@ export default function PlaylistsView({ playlists, onPlay, onDelete, onCreate })
   return (
     <section className="relative flex-1 min-h-0 pt-4">
       <div className="flex items-center justify-between mb-2 px-1">
-        <p className="text-[10px] font-mono text-muted/40 uppercase tracking-[0.15em]">
+        <p className="text-[10px] font-mono text-muted/80 uppercase tracking-[0.15em]">
           {ids.length} playlist{ids.length > 1 ? "s" : ""}
         </p>
         <button
           onClick={onCreate}
-          className="inline-flex items-center gap-1 text-[10px] font-mono text-muted/30 hover:text-accent-red transition-colors"
+          className="inline-flex items-center gap-1 text-[10px] font-mono text-muted/80 hover:text-accent-red transition-colors"
         >
           <Plus className="w-3 h-3" />
           Nouvelle

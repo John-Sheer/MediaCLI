@@ -13,12 +13,14 @@ import QueuePanel from "./components/QueuePanel.jsx";
 import { Logo } from "./components/Logo.jsx";
 import { useStore } from "./store/store.jsx";
 import { useActions } from "./store/actions.js";
+import { api } from "./api/client.js";
 import { listen } from "@tauri-apps/api/event";
 
 
 export default function App() {
   const { state, dispatch } = useStore();
   const actions = useActions();
+  const IS_ANDROID = /android/i.test(navigator.userAgent || "");
   const scrollRef = useRef(null);
   const vpnPrompted = useRef(state.vpnPrompted);
   const [resumeTime, setResumeTime] = useState(0);
@@ -149,13 +151,25 @@ export default function App() {
     if (name === null) return;
     const finalName = name || "Ma playlist";
     const id = `pl_${Date.now()}`;
-    dispatch({ type: "CREATE_PLAYLIST", name: finalName });
+    dispatch({ type: "CREATE_PLAYLIST", name: finalName, id });
     setTimeout(() => {
       actions.addToPlaylist(id, track);
     }, 0);
   };
 
   const handleSaveQueue = (name, tracks) => actions.saveQueueAsPlaylist(name, tracks);
+
+  const handleOpenDownloads = async () => {
+    try {
+      const { ok, data } = await api.openFolder("all");
+      if (ok && IS_ANDROID && data?.path) {
+        dispatch({ type: "SET_HOME_TAB", tab: "local" });
+        actions.openFolder(data.path);
+      }
+    } catch {
+      /* noop */
+    }
+  };
 
   const handlePlayPlaylist = (id, trackId) => {
     const pl = state.playlists[id];
@@ -223,6 +237,7 @@ export default function App() {
                 onMenuToggle={(id) => dispatch({ type: "SET_MENU_SONG", id })}
                 onAddToPlaylist={handleAddToPlaylist}
                 onCreateAndAdd={handleCreateAndAdd}
+                onOpenDownloads={handleOpenDownloads}
                 onResume={handleResume}
               />
             )}
@@ -289,7 +304,7 @@ export default function App() {
       {state.vpnModal && (
         <VpnModal torActive={state.torActive} onConfirm={confirmVpn} onSkip={skipVpn} />
       )}
-      <UpdateManager />
+      {!IS_ANDROID && <UpdateManager />}
     </div>
   );
 }

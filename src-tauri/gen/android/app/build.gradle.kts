@@ -69,3 +69,9 @@ dependencies {
 }
 
 apply(from = "tauri.build.gradle.kts")
+
+// Le .so est compilé et copié manuellement dans jniLibs (le build Rust via
+// la CLI tauri échoue sur Windows sans mode développeur : symlink refusé).
+tasks.matching { it.name.startsWith("rustBuild") }.configureEach {
+    enabled = false
+}

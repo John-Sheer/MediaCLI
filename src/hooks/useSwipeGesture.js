@@ -18,6 +18,11 @@ export default function useSwipeGesture({
   const tapTimeout = useRef(null);
 
   const handleTouchStart = useCallback((e) => {
+    const target = e.target;
+    if (target.closest && target.closest("button, input, textarea, select, a, [role='button'], [role='slider'], [role='tab']")) {
+      touchStart.current = null;
+      return;
+    }
     const t = e.touches[0];
     touchStart.current = { x: t.clientX, y: t.clientY };
     touchStartTime.current = Date.now();

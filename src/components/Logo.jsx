@@ -24,7 +24,7 @@ const CLI_RED = "#ff3b5c";
 export function CLIText({ className = "", bold = true }) {
   return (
     <span className={className} style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-      <span className="text-white/60">media</span>
+      <span className="text-white/85">media</span>
       <span style={{ color: CLI_RED, fontWeight: bold ? 700 : 500 }}>CLI</span>
     </span>
   );

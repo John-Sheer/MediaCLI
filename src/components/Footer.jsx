@@ -12,8 +12,8 @@ export function Footer({ onAbout }) {
         >
           <CLIText />
         </button>
-        <span className="text-white/15 text-[10px]">&middot;</span>
-        <span className="font-mono text-[10px] text-white/30 tracking-wider">&copy; 2026 Sheer</span>
+        <span className="text-white/80 text-[10px]">&middot;</span>
+        <span className="font-mono text-[10px] text-white/80 tracking-wider">&copy; 2026 Sheer</span>
       </div>
     </footer>
   );

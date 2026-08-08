@@ -51,7 +51,7 @@ export default function SearchBar({ query, setQuery, onSearch, loading }) {
           <span className={`ml-3 font-mono text-sm font-bold transition-all duration-200 ${
             focused
               ? "text-[#ff3b5c] drop-shadow-[0_0_6px_rgba(255,59,92,0.7)]"
-              : "text-white/15"
+              : "text-white/80"
           }`}>
             ❯
           </span>
@@ -76,14 +76,14 @@ export default function SearchBar({ query, setQuery, onSearch, loading }) {
           onBlur={() => setFocused(false)}
           placeholder={!focused && !query ? "$ mediacli search…" : focused && !query ? "artist, album, titre…" : ""}
           style={{ outline: "none", boxShadow: "none" }}
-          className="w-full h-full bg-transparent outline-none appearance-none font-mono text-[13px] text-white/90 placeholder:text-white/10 tracking-wider caret-transparent px-4"
+          className="w-full h-full bg-transparent outline-none appearance-none font-mono text-[13px] text-white/90 text-white/80 tracking-wider caret-transparent px-4"
           spellCheck={false}
           autoComplete="off"
         />
 
         {focused && (
           <span
-            className="absolute font-mono text-[18px] font-bold text-[#ff3b5c]/50 pointer-events-none animate-[cursor-blink_1s_step-end_infinite]"
+            className="absolute font-mono text-[18px] font-bold text-[#ff3b5c]/80 pointer-events-none animate-[cursor-blink_1s_step-end_infinite]"
             style={{ left: `calc(16px + ${cursorLeft}px)` }}
           >
             _
@@ -95,11 +95,11 @@ export default function SearchBar({ query, setQuery, onSearch, loading }) {
       {query.trim() && focused && (
         <button
           type="submit"
-          className="shrink-0 flex items-center gap-1.5 h-full px-4 text-[#ff3b5c]/50 hover:text-[#ff3b5c] hover:bg-[#ff3b5c]/[0.05] transition-all duration-200 font-mono text-[11px] font-medium tracking-wider border-l border-white/[0.04]"
+          className="shrink-0 flex items-center gap-1.5 h-full px-4 text-[#ff3b5c]/80 hover:text-[#ff3b5c] hover:bg-[#ff3b5c]/[0.05] transition-all duration-200 font-mono text-[11px] font-medium tracking-wider border-l border-white/[0.04]"
           aria-label="Rechercher"
         >
           ENTER
-          <span className="text-[10px] opacity-50">↵</span>
+          <span className="text-[10px] opacity-90">↵</span>
         </button>
       )}
     </form>

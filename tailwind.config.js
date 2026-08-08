@@ -13,7 +13,7 @@ export default {
           red: "#c81e3a",
           glow: "#d93a52",
         },
-        muted: "#6b6b80",
+        muted: "#b8b8cc",
         red: "#ff3b5c",
         gold: "#e0b15a",
       },
