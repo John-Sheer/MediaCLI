@@ -1,15 +1,15 @@
 {
-  "version": "0.1.8",
-  "notes": "Scan Android, permissions, streaming et UI ameliore — APK signe disponible.",
-  "pub_date": "2026-08-09T00:00:00Z",
-  "platforms": {
-    "android-arm64": {
-      "url": "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.8/MediaCLI.apk",
-      "signature": ""
-    },
-    "windows-x64": {
-      "url": "https://mediacli-app.web.app/updates/latest-windows.bin",
-      "signature": ""
+    "version": "0.1.9",
+    "notes": "Mises \u00e0 jour depuis l'application (Windows + Android), stabilit\u00e9 et correctifs.",
+    "pub_date": "2026-08-09T11:39:43Z",
+    "platforms": {
+        "android-arm64": {
+            "url": "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.9/MediaCLI.apk",
+            "signature": ""
+        },
+        "windows-x86_64": {
+            "url": "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.9/MediaCLI-Setup.exe",
+            "signature": "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUhOcFoyNWhkSFZ5WlNCbWNtOXRJSFJoZFhKcElITmxZM0psZENCclpYa0tVbFZSVDBObWJFbFZWWEIxYVV0VGNXdHFZbFZHT1dsMmFXZ3dWR2hTZDFCalNWQjRURTFhVUdSblVuZDBia0ZsWWs4MVdXdzNVemR4YW5wRFZrOXJlWEJHVG1wbk4yMU9lVmd6ZERSTU5rOXhNMjF2V1hob1NGUk1TMVowWlU1c1ZFRTBQUXAwY25WemRHVmtJR052YlcxbGJuUTZJSFJwYldWemRHRnRjRG94TnpnMk1qYzBORGM0Q1dacGJHVTZUV1ZrYVdGRFRFbGZNQzR4TGpsZmVEWTBMWE5sZEhWd0xtVjRaUXB2TXpsMVVYRTFZa3B2TW1KYU1HaEZjVTlaY1RSYWFtYzVWV2hDWkZOUFJDOHhjMnhHZEhsSmRFUkZka3h0V1RKWFVFTkpaSFZwVW1WSFExUTBZMHczU0VJMk9HdDRTbXN2UlhOMmJDdEVkbTV5VTNKQ1p6MDlDZz09"
+        }
     }
-  }
 }

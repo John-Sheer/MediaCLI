@@ -308,6 +308,124 @@ async fn request_android_storage_permission() -> bool {
     true
 }
 
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+struct InstallerHandle(tauri::plugin::PluginHandle<tauri::Wry>);
+
+#[tauri::command]
+fn relaunch_app(app: tauri::AppHandle) {
+    app.restart();
+}
+
+#[tauri::command]
+async fn download_apk(app: tauri::AppHandle, url: String) -> Result<String, String> {
+    use std::io::Write;
+
+    let dir = app.path().app_cache_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let dest = dir.join("update.apk");
+
+    let mut response = reqwest::get(&url).await.map_err(|e| e.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("HTTP {}", response.status()));
+    }
+    let total = response.content_length().unwrap_or(0);
+    let mut file = std::fs::File::create(&dest).map_err(|e| e.to_string())?;
+    let mut downloaded: u64 = 0;
+    while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+        file.write_all(&chunk).map_err(|e| e.to_string())?;
+        downloaded += chunk.len() as u64;
+        let percent = if total > 0 {
+            (downloaded as f64 / total as f64 * 100.0) as u32
+        } else {
+            0
+        };
+        let _ = app.emit("apk-download-progress", percent);
+    }
+
+    Ok(dest.to_string_lossy().to_string())
+}
+
+#[cfg(target_os = "android")]
+fn installer_handle(
+    app: &tauri::AppHandle,
+) -> Result<tauri::plugin::PluginHandle<tauri::Wry>, String> {
+    app.try_state::<InstallerHandle>()
+        .map(|s| s.0.clone())
+        .ok_or_else(|| "plugin installer non initialisé".to_string())
+}
+
+#[tauri::command]
+async fn install_apk(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        let handle = installer_handle(&app)?;
+        handle
+            .run_mobile_plugin_async::<serde_json::Value>(
+                "install",
+                serde_json::json!({ "path": path }),
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, path);
+        Err("Installation APK non disponible sur ce système".to_string())
+    }
+}
+
+#[tauri::command]
+async fn can_install_apk(app: tauri::AppHandle) -> bool {
+    #[cfg(target_os = "android")]
+    {
+        match installer_handle(&app) {
+            Ok(handle) => {
+                if let Ok(value) = handle
+                    .run_mobile_plugin_async::<serde_json::Value>(
+                        "canInstall",
+                        serde_json::json!({}),
+                    )
+                    .await
+                {
+                    return value
+                        .get("can")
+                        .and_then(|c| c.as_bool())
+                        .unwrap_or(false);
+                }
+                false
+            }
+            Err(_) => false,
+        }
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        false
+    }
+}
+
+#[tauri::command]
+async fn request_install_permission(app: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        let handle = installer_handle(&app)?;
+        handle
+            .run_mobile_plugin_async::<serde_json::Value>(
+                "requestInstallPermission",
+                serde_json::json!({}),
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        Err("Non disponible sur ce système".to_string())
+    }
+}
+
 #[cfg(desktop)]
 struct ServerChildProcess(Mutex<Option<tauri_plugin_shell::process::CommandChild>>);
 
@@ -355,6 +473,24 @@ pub fn run() {
     }
     builder = builder.plugin(tauri_plugin_dialog::init());
     builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    builder = builder.plugin(
+        tauri::plugin::Builder::<tauri::Wry>::new("installer")
+            .setup(|app, api| {
+                #[cfg(target_os = "android")]
+                {
+                    let handle = api
+                        .register_android_plugin("com.johnsheer.mediacli", "InstallerPlugin")
+                        .map_err(|e| e.to_string())?;
+                    app.manage(InstallerHandle(handle));
+                }
+                #[cfg(not(target_os = "android"))]
+                {
+                    let _ = (app, api);
+                }
+                Ok(())
+            })
+            .build()
+    );
 
     builder
         .setup(|app| {
@@ -424,7 +560,12 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             select_folder_dialog,
             set_thumbbar_playing,
-            request_android_storage_permission
+            request_android_storage_permission,
+            relaunch_app,
+            download_apk,
+            install_apk,
+            can_install_apk,
+            request_install_permission
         ])
         .run(tauri::generate_context!())
         .expect("Erreur lors du lancement de l'application Tauri");

@@ -1,6 +1,24 @@
 import { useEffect, useState, useCallback } from "react";
 import { check } from "@tauri-apps/plugin-updater";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { getVersion } from "@tauri-apps/api/app";
 import { Download, X, RefreshCw } from "lucide-react";
+
+const IS_ANDROID = typeof navigator !== "undefined" && /android/i.test(navigator.userAgent || "");
+const MANIFEST_URL = "https://mediacli-app.web.app/updates/latest.json";
+
+const compareVersions = (a, b) => {
+  const pa = String(a).split(".").map(Number);
+  const pb = String(b).split(".").map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] || 0;
+    const y = pb[i] || 0;
+    if (x > y) return 1;
+    if (x < y) return -1;
+  }
+  return 0;
+};
 
 export default function UpdateManager() {
   const [updateInfo, setUpdateInfo] = useState(null);
@@ -12,13 +30,30 @@ export default function UpdateManager() {
   const checkForUpdates = useCallback(async () => {
     try {
       setError(null);
-      const update = await check();
-      if (update && !dismissed) {
-        setUpdateInfo({
-          version: update.version,
-          notes: update.body || "Nouvelle version disponible",
-          date: update.date,
-        });
+      if (IS_ANDROID) {
+        const response = await fetch(MANIFEST_URL, { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const manifest = await response.json();
+        const entry = manifest.platforms?.["android-arm64"];
+        if (!entry) return;
+        const current = await getVersion();
+        if (compareVersions(manifest.version, current) <= 0) return;
+        if (!dismissed) {
+          setUpdateInfo({
+            version: manifest.version,
+            notes: manifest.notes || "Nouvelle version disponible",
+            url: entry.url,
+          });
+        }
+      } else {
+        const update = await check();
+        if (update && !dismissed) {
+          setUpdateInfo({
+            version: update.version,
+            notes: update.body || "Nouvelle version disponible",
+            date: update.date,
+          });
+        }
       }
     } catch (e) {
       console.error("[updater] check failed:", e);
@@ -31,11 +66,43 @@ export default function UpdateManager() {
     return () => clearInterval(interval);
   }, [checkForUpdates]);
 
+  const handleDownloadAndroid = async () => {
+    let unlisten = null;
+    try {
+      unlisten = await listen("apk-download-progress", (event) => {
+        setProgress(typeof event.payload === "number" ? event.payload : 0);
+      });
+      const path = await invoke("download_apk", { url: updateInfo.url });
+      let can = await invoke("can_install_apk");
+      if (!can) {
+        await invoke("request_install_permission");
+        can = await invoke("can_install_apk");
+        if (!can) {
+          setError("Activez « Installer des applications inconnues » dans les paramètres puis réessayez.");
+          return;
+        }
+      }
+      await invoke("install_apk", { path });
+      setUpdateInfo(null);
+      setDismissed(true);
+    } catch (e) {
+      console.error("[updater] android install failed:", e);
+      setError("Échec de l'installation de la mise à jour. Réessayez.");
+    } finally {
+      if (unlisten) unlisten();
+      setDownloading(false);
+    }
+  };
+
   const handleDownload = async () => {
     if (!updateInfo) return;
     setDownloading(true);
     setProgress(0);
     setError(null);
+    if (IS_ANDROID) {
+      await handleDownloadAndroid();
+      return;
+    }
     try {
       const update = await check();
       if (!update) {
@@ -53,6 +120,7 @@ export default function UpdateManager() {
           setProgress(100);
         }
       });
+      await invoke("relaunch_app");
     } catch (e) {
       console.error("[updater] download failed:", e);
       setError("Échec du téléchargement. Réessayez.");
@@ -101,7 +169,7 @@ export default function UpdateManager() {
               />
             </div>
             <p className="text-[10px] text-gray-500 mt-1 text-center">
-              Téléchargement...
+              {IS_ANDROID ? "Téléchargement de l'APK..." : "Téléchargement..."}
             </p>
           </div>
         )}

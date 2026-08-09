@@ -4,6 +4,18 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Push-Location $root
 
+# Clé minisign pour signer le build (utilisée par tauri build + signer sign)
+$env:TAURI_SIGNING_PRIVATE_KEY_PATH = Join-Path $env:USERPROFILE ".tauri\mediacli.key"
+$passFile = Join-Path $env:USERPROFILE ".tauri\mediacli.key.pass"
+if (Test-Path $env:TAURI_SIGNING_PRIVATE_KEY_PATH) {
+  $env:TAURI_SIGNING_PRIVATE_KEY = (Get-Content -Raw $env:TAURI_SIGNING_PRIVATE_KEY_PATH).Trim()
+  if (Test-Path $passFile) {
+    $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = (Get-Content -Raw $passFile).Trim()
+  } else {
+    Write-Output "ATTENTION: fichier mot de passe absent ($passFile) - le build ne pourra pas signer"
+  }
+}
+
 Write-Output "[1/5] Nettoyage caches (vite + tauri build)..."
 Remove-Item -Recurse -Force "node_modules\.vite" -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force "src-tauri\target\release\build" -ErrorAction SilentlyContinue
@@ -30,7 +42,7 @@ if (Test-Path $srcLib) {
   Write-Output "ATTENTION: bibliothèque native introuvable à $srcLib"
 }
 
-Write-Output "[4/5] Sync portable..."
+Write-Output "[4/6] Sync portable..."
 $releaseDir = Join-Path $root "src-tauri\target\release"
 $exe = Get-ChildItem -LiteralPath $releaseDir -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "*diaCLI.exe" -and -not $_.PSIsContainer } | Select-Object -First 1
 if ($exe) {
@@ -49,5 +61,61 @@ if ($exe) {
   Write-Output "ERREUR: EXE introuvable dans $releaseDir"
 }
 
-Write-Output "[5/5] Terminé. Lance MediaCLI_Portable\MédiaCLI.exe (ou le raccourci bureau)."
+Write-Output "[5/6] Signature minisign de l'installeur NSIS..."
+$nsisDir = Join-Path $root "src-tauri\target\release\bundle\nsis"
+$setup = Get-ChildItem -LiteralPath $nsisDir -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "*setup.exe" } | Select-Object -First 1
+$version = (Get-Content -Raw (Join-Path $root "src-tauri\tauri.conf.json") | ConvertFrom-Json).version
+if (-not $setup) {
+  Write-Output "ERREUR: installeur NSIS introuvable dans $nsisDir"
+  Pop-Location; exit 1
+}
+$keyPath = Join-Path $env:USERPROFILE ".tauri\mediacli.key"
+$passFile = Join-Path $env:USERPROFILE ".tauri\mediacli.key.pass"
+if ((Test-Path $keyPath) -and (Test-Path $passFile)) {
+  $pass = (Get-Content -Raw $passFile).Trim()
+  npx --no-install @tauri-apps/cli signer sign --private-key-path $keyPath --password $pass "$($setup.FullName)"
+  if ($LASTEXITCODE -ne 0) { Write-Output "ECHEC signature"; Pop-Location; exit 1 }
+} else {
+  Write-Output "ATTENTION: clé minisign absente ($keyPath) - latest.json ne sera PAS signé"
+}
+$sigFile = "$($setup.FullName).sig"
+$sigField = ""
+if (Test-Path $sigFile) {
+  $sigText = (Get-Content -Raw $sigFile).Trim()
+  $sigField = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($sigText))
+}
+$tag = "v$version"
+$releaseBase = "https://github.com/John-Sheer/MediaCLI/releases/download/$tag"
+$latestJson = @{
+  version = $version
+  notes   = "Mises à jour depuis l'application (Windows + Android), stabilité et correctifs."
+  pub_date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+  platforms = @{
+    "android-arm64" = @{
+      url       = "$releaseBase/MediaCLI.apk"
+      signature = ""
+    }
+    "windows-x86_64" = @{
+      url       = "$releaseBase/MediaCLI-Setup.exe"
+      signature = $sigField
+    }
+  }
+}
+$latestPath = Join-Path $root "hosting\updates\latest.json"
+($latestJson | ConvertTo-Json -Depth 6) | Set-Content -Encoding UTF8 -Path $latestPath
+Write-Output "latest.json écrit: $latestPath"
+
+Write-Output "[6/6] Copie de l'installeur signé pour l'upload..."
+$exeDir = Join-Path (Split-Path -Parent $root) "EXE"
+if (Test-Path $exeDir) {
+  $copyTarget = Join-Path $exeDir "MediaCLI-Setup.exe"
+  Copy-Item -Force $setup.FullName $copyTarget
+  if (Test-Path $sigFile) { Copy-Item -Force $sigFile (Join-Path $exeDir "MediaCLI-Setup.exe.sig") }
+  Write-Output "Copie OK: $copyTarget"
+}
+
+Write-Output "[OK] Terminé. Prochaines étapes:"
+Write-Output "  1. Uploader $exeDir\MediaCLI-Setup.exe sur la release GitHub $tag"
+Write-Output "  2. Uploader l'APK (release $tag) si ce n'est pas fait"
+Write-Output "  3. Déployer le site: cd hosting && firebase deploy --only hosting"
 Pop-Location

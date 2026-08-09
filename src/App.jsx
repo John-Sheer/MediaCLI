@@ -304,7 +304,7 @@ export default function App() {
       {state.vpnModal && (
         <VpnModal torActive={state.torActive} onConfirm={confirmVpn} onSkip={skipVpn} />
       )}
-      {!IS_ANDROID && <UpdateManager />}
+      <UpdateManager />
     </div>
   );
 }

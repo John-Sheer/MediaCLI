@@ -15,7 +15,7 @@
 
     :root{
       --bg:#000;--surface:#0a0a12;--border:#17172a;
-      --red:#ff3b5c;--red-dim:#c81e3a;
+      --red:#ff3b5c;--red-dim:#c81e3a;--green:#34b88a;
       --text:#e4e4ed;--muted:#6b6b80;
     }
 
@@ -28,8 +28,12 @@
 
     /* ===== HERO ===== */
     .hero{
-      width:100%;padding:72px 24px 0;text-align:center;
+      width:100%;padding:72px 24px 56px;text-align:center;
       background:#000;position:relative;overflow:hidden;
+    }
+    .hero::after{
+      content:'';position:absolute;bottom:0;left:0;right:0;height:1px;
+      background:linear-gradient(90deg,transparent,var(--border),transparent);
     }
 
     .brand-row{
@@ -47,67 +51,53 @@
     .tagline{color:var(--muted);font-size:1.05rem;line-height:1.6;max-width:360px;margin:0 auto 40px}
 
     /* ===== PLATFORM SELECTOR ===== */
-    .platforms{display:flex;justify-content:center;align-items:flex-start;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+    .platforms{display:flex;justify-content:center;gap:12px;margin-bottom:32px;flex-wrap:wrap}
 
     .plat-btn{
-      display:inline-flex;align-items:center;gap:9px;
-      padding:10px 20px;border-radius:999px;
-      font-weight:600;font-size:.86rem;text-decoration:none;color:var(--text);
-      background:#0d0d16;border:1px solid var(--border);
-      transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease,color .2s ease;
-      cursor:pointer;
+      display:inline-flex;align-items:center;gap:8px;
+      padding:12px 28px;border-radius:10px;
+      font-size:.95rem;font-weight:600;text-decoration:none;
+      transition:all .25s ease;cursor:pointer;border:none;
     }
-    .plat-btn:hover{transform:translateY(-2px);border-color:rgba(200,30,58,.5);box-shadow:0 10px 28px rgba(0,0,0,.5);color:var(--red)}
-    .plat-btn:active{transform:translateY(0)}
-    .plat-btn:focus-visible{outline:2px solid var(--red);outline-offset:3px}
+    .plat-btn svg{width:18px;height:18px;flex-shrink:0}
 
-    .pt-icon{
-      display:flex;align-items:center;justify-content:center;
-      width:26px;height:26px;border-radius:8px;
-      background:rgba(255,255,255,.05);border:1px solid var(--border);
-      color:var(--muted);
-      transition:color .2s ease,border-color .2s ease;
+    .plat-android{
+      background:linear-gradient(135deg,var(--red-dim),var(--red));
+      color:#fff;box-shadow:0 4px 24px rgba(200,30,58,.3);
     }
-    .plat-btn:hover .pt-icon{color:var(--red);border-color:rgba(200,30,58,.4)}
-    .pt-icon svg{width:14px;height:14px}
+    .plat-android:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(200,30,58,.45)}
+    .plat-android:active{transform:translateY(0)}
 
-    .pt-size{font-size:.7rem;color:var(--muted);font-weight:500}
-
-    .plat-wrap{display:flex;flex-direction:column;align-items:center;gap:7px}
-    .pt-caption{font-size:.66rem;color:var(--muted);max-width:190px;text-align:center;line-height:1.45;padding:0 6px}
-    .pt-caption code{font-size:.64rem;color:var(--text)}
+    .plat-windows{
+      background:var(--surface);color:var(--text);
+      border:1px solid var(--border);
+    }
+    .plat-windows:hover{border-color:rgba(200,30,58,.3);transform:translateY(-2px)}
 
     .meta{
-      display:flex;flex-direction:column;align-items:center;gap:10px;
-      margin-top:22px;
+      display:flex;flex-direction:column;align-items:center;gap:8px;
+      margin-top:18px;
     }
     .version{color:var(--muted);font-size:.78rem}
     .badge{
-      display:inline-flex;align-items:center;gap:7px;
-      padding:5px 14px;
+      display:inline-block;padding:3px 10px;
       background:rgba(255,255,255,.03);border:1px solid var(--border);
-      border-radius:20px;font-size:.72rem;color:var(--muted);
+      border-radius:20px;font-size:.7rem;color:var(--muted);
     }
-    .badge::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--red);box-shadow:0 0 8px rgba(200,30,58,.7)}
-    .dl-details{display:flex;justify-content:center;margin-top:6px}
+    .dl-details{
+      display:flex;gap:16px;flex-wrap:wrap;justify-content:center;
+      margin-top:4px;
+    }
     .dl-detail{
-      display:inline-flex;align-items:center;gap:7px;
-      font-size:.76rem;color:var(--muted);
-      padding:7px 16px;border-radius:20px;
-      background:rgba(255,255,255,.03);border:1px solid var(--border);
+      display:flex;align-items:center;gap:5px;
+      font-size:.7rem;color:var(--muted);
     }
-    .dl-detail svg{width:14px;height:14px;color:var(--red);opacity:.85}
+    .dl-detail svg{width:13px;height:13px;opacity:.5}
 
     /* ===== SECTION GENERIC ===== */
-    .divider{
-      display:flex;align-items:center;justify-content:center;gap:16px;
-      margin:0 auto;padding:0 24px;
-    }
-    .divider--section{margin:56px auto 16px}
-    .dv-line{width:140px;height:1px;background:var(--border)}
-    .dv-diamond{
-      width:7px;height:7px;transform:rotate(45deg);border-radius:1px;
-      background:var(--red);box-shadow:0 0 14px rgba(200,30,58,.55);
+    .sep{
+      width:48px;height:1px;margin:52px auto;
+      background:linear-gradient(90deg,transparent,var(--border),transparent);
     }
     .sec-label{
       color:var(--red);font-size:.72rem;font-weight:600;
@@ -164,14 +154,10 @@
       .brand{font-size:2rem}
       .features{grid-template-columns:1fr 1fr;gap:10px}
       .feat{padding:16px 14px}
-      .platforms{gap:10px}
-      .plat-btn{padding:9px 16px;font-size:.82rem}
+      .plat-btn{padding:11px 22px;font-size:.88rem}
     }
     @media(max-width:380px){
       .features{grid-template-columns:1fr}
-    }
-    @media(prefers-reduced-motion:reduce){
-      *,*::before,*::after{transition-duration:.01ms!important;animation-duration:.01ms!important}
     }
   </style>
 </head>
@@ -199,24 +185,14 @@
     <p class="tagline">Recherchez, écoutez et téléchargez votre musique. Gratuit, sans inscription.</p>
 
     <div class="platforms">
-      <a href="https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.8/MediaCLI.apk" download="MediaCLI.apk" class="plat-btn" id="dlAndroid" onclick="dlFeedback(this,'APK',event)">
-        <span class="pt-icon"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18.5h2"/></svg></span>
-        <span class="pt-label">Android</span>
-        <span class="pt-size" id="apkSizeTxt">~26 Mo</span>
+      <a href="https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.9/MediaCLI.apk" class="plat-btn plat-android" id="dlAndroid" onclick="dlFeedback(this,'APK',event)">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        Android
       </a>
-      <a href="https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.8/MediaCLI-Setup.exe" class="plat-btn" id="dlWindows" onclick="dlFeedback(this,'Windows',event)">
-        <span class="pt-icon"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>
-        <span class="pt-label">Windows</span>
-        <span class="pt-size" id="exeSizeTxt">~52 Mo</span>
+      <a href="https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.9/MediaCLI-Setup.exe" class="plat-btn plat-windows" id="dlWindows" onclick="dlFeedback(this,'Windows',event)">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        Windows
       </a>
-      <div class="plat-wrap">
-        <a href="https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.8/MediaCLI-Portable.zip" class="plat-btn" id="dlPortable" onclick="dlFeedback(this,'Portable',event)">
-          <span class="pt-icon"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20.5 7.5L12 2 3.5 7.5v9L12 22l8.5-5.5v-9zM12 22v-9M3.5 7.5L12 13l8.5-5.5"/></svg></span>
-          <span class="pt-label">Portable</span>
-          <span class="pt-size" id="zipSizeTxt">~60 Mo</span>
-        </a>
-        <span class="pt-caption">Dézipper puis lancer <code>MediaCLI.exe</code> — aucune installation</span>
-      </div>
     </div>
 
     <div class="meta">
@@ -226,18 +202,22 @@
       </div>
       <div class="dl-details">
         <span class="dl-detail">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          APK ~21 Mo
+        </span>
+        <span class="dl-detail">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+          Setup ~52 Mo
+        </span>
+        <span class="dl-detail">
           <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
           Gratuit &middot; Pas de pub
         </span>
       </div>
     </div>
-
-    <div class="divider divider--section" aria-hidden="true">
-      <span class="dv-line"></span>
-      <span class="dv-diamond"></span>
-      <span class="dv-line"></span>
-    </div>
   </div>
+
+  <div class="sep"></div>
 
   <p class="sec-label">Fonctionnalités</p>
 
@@ -274,21 +254,45 @@
     </div>
   </div>
 
-  <div class="divider divider--section" aria-hidden="true">
-    <span class="dv-line"></span>
-    <span class="dv-diamond"></span>
-    <span class="dv-line"></span>
-  </div>
+  <div class="sep"></div>
 
   <div class="changelog">
     <p class="sec-label">Nouveautés</p>
     <div class="cl-item">
+      <div class="cl-date">v0.1.9 — Août 2026</div>
+      <div class="cl-notes">Mises à jour automatiques directement depuis l'application (Windows & Android), corrections de stabilité et améliorations générales.</div>
+    </div>
+    <div class="cl-item">
       <div class="cl-date">v0.1.8 — Août 2026</div>
-      <div class="cl-notes">Scan Android et permissions, streaming plus fiable, lecteur et UI améliorés. APK signé, version portable Windows disponible.</div>
+      <div class="cl-notes">Scan musique/vidéos locales amélioré sur Android (permissions + accès Tous les fichiers), demande des permissions média au lancement, recherche et streaming YouTube plus fiables, améliorations du lecteur et de l'interface, version portable Windows disponible.</div>
+    </div>
+    <div class="cl-item">
+      <div class="cl-date">v0.1.7 — Non publiée</div>
+      <div class="cl-notes">Version intermédiaire non publiée.</div>
+    </div>
+    <div class="cl-item">
+      <div class="cl-date">v0.1.6 — Non publiée</div>
+      <div class="cl-notes">Version intermédiaire non publiée.</div>
+    </div>
+    <div class="cl-item">
+      <div class="cl-date">v0.1.5 — Non publiée</div>
+      <div class="cl-notes">Version intermédiaire non publiée.</div>
+    </div>
+    <div class="cl-item">
+      <div class="cl-date">v0.1.4 — Non publiée</div>
+      <div class="cl-notes">Version intermédiaire non publiée.</div>
+    </div>
+    <div class="cl-item">
+      <div class="cl-date">v0.1.3 — Non publiée</div>
+      <div class="cl-notes">Version intermédiaire non publiée.</div>
+    </div>
+    <div class="cl-item">
+      <div class="cl-date">v0.1.2 — Non publiée</div>
+      <div class="cl-notes">Version intermédiaire non publiée.</div>
     </div>
     <div class="cl-item">
       <div class="cl-date">v0.1.1 — Juillet 2026</div>
-      <div class="cl-notes">Correction des bugs. Exe Windows disponible, corrections de stabilité.</div>
+      <div class="cl-notes">Correction des bugs. Console fix, scan local fix, exe Windows disponible.</div>
     </div>
     <div class="cl-item">
       <div class="cl-date">v0.1.0 — Juillet 2026</div>
@@ -314,41 +318,6 @@
       .catch(() => {
         document.getElementById('versionInfo').textContent = 'Version 0.1.0';
       });
-
-    function formatBytes(b) {
-      if (b >= 1073741824) return (b / 1073741824).toFixed(1).replace('.', ',') + ' Go';
-      if (b >= 1048576) return (b / 1048576).toFixed(1).replace('.', ',') + ' Mo';
-      if (b >= 1024) return (b / 1024).toFixed(1).replace('.', ',') + ' Ko';
-      return b + ' o';
-    }
-
-    function loadAssetSizes() {
-      const cacheKey = 'mediacli_asset_sizes_v1';
-      try {
-        const cached = JSON.parse(localStorage.getItem(cacheKey));
-        if (cached && Date.now() - cached.t < 3600000) return Promise.resolve(cached.sizes);
-      } catch (e) {}
-
-      return fetch('https://api.github.com/repos/John-Sheer/MediaCLI/releases/latest')
-        .then(r => r.json())
-        .then(data => {
-          const sizes = {};
-          (data.assets || []).forEach(a => {
-            const n = a.name.toLowerCase();
-            if (n.endsWith('.apk')) sizes.apk = a.size;
-            else if (n.endsWith('setup.exe')) sizes.exe = a.size;
-            else if (n.endsWith('portable.zip')) sizes.zip = a.size;
-          });
-          try { localStorage.setItem(cacheKey, JSON.stringify({ t: Date.now(), sizes: sizes })); } catch (e) {}
-          return sizes;
-        });
-    }
-
-    loadAssetSizes().then(sizes => {
-      if (sizes.apk) document.getElementById('apkSizeTxt').textContent = formatBytes(sizes.apk);
-      if (sizes.exe) document.getElementById('exeSizeTxt').textContent = formatBytes(sizes.exe);
-      if (sizes.zip) document.getElementById('zipSizeTxt').textContent = formatBytes(sizes.zip);
-    }).catch(() => {});
 
     const origText = {};
     function dlFeedback(el, name, e) {

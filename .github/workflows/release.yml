@@ -106,3 +106,89 @@ jobs:
           files: |
             MediaCLI.apk
             src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Tauri CLI
+        run: npm install -g @tauri-apps/cli
+
+      - name: Installer la clé de signature minisign
+        shell: pwsh
+        env:
+          KEYFILE: ${{ secrets.TAURI_KEYFILE }}
+          KEYPASS: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.tauri" | Out-Null
+          [System.IO.File]::WriteAllText("$env:USERPROFILE\.tauri\mediacli.key", $env:KEYFILE)
+          [System.IO.File]::WriteAllText("$env:USERPROFILE\.tauri\mediacli.key.pass", $env:KEYPASS)
+
+      # ATTENTION: les ressources (ffmpeg.exe, yt-dlp.exe, tor.exe) sont des
+      # placeholders de 0 octet dans le repo. Ajuster cette étape pour
+      # télécharger les vrais binaires avant le build, sinon l'installeur
+      # Windows sera livré sans outils de streaming/téléchargement.
+      - name: Vérifier les ressources
+        shell: pwsh
+        run: |
+          Get-ChildItem src-tauri\resources\*.exe | ForEach-Object {
+            if ($_.Length -eq 0) { Write-Warning "Ressource vide: $($_.Name) (0 octet)" }
+          }
+
+      - name: Build Windows app (NSIS signé)
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_KEYFILE }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          npm run build
+          npx tauri build --bundles nsis
+
+      - name: Générer latest.json + renommer l'installeur
+        id: manifest
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem "src-tauri\target\release\bundle\nsis" -Filter "*setup.exe" | Select-Object -First 1
+          if (-not $setup) { throw "Installeur NSIS introuvable" }
+          Copy-Item $setup.FullName "MediaCLI-Setup.exe"
+          if (Test-Path "$($setup.FullName).sig") { Copy-Item "$($setup.FullName).sig" "MediaCLI-Setup.exe.sig" }
+          $sigText = if (Test-Path "$($setup.FullName).sig") { (Get-Content -Raw "$($setup.FullName).sig").Trim() } else { "" }
+          $sigField = if ($sigText) { [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($sigText)) } else { "" }
+          $version = (Get-Content -Raw "src-tauri\tauri.conf.json" | ConvertFrom-Json).version
+          $tag = "v$version"
+          $releaseBase = "https://github.com/John-Sheer/MediaCLI/releases/download/$tag"
+          $json = @{
+            version = $version
+            notes   = "Mises à jour depuis l'application (Windows + Android), stabilité et correctifs."
+            pub_date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            platforms = @{
+              "android-arm64"  = @{ url = "$releaseBase/MediaCLI.apk"; signature = "" }
+              "windows-x86_64" = @{ url = "$releaseBase/MediaCLI-Setup.exe"; signature = $sigField }
+            }
+          }
+          ($json | ConvertTo-Json -Depth 6) | Set-Content -Encoding UTF8 "latest.json"
+          echo "TAG=$tag" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding ascii
+
+      - name: Upload Windows assets to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          generate_release_notes: true
+          files: |
+            MediaCLI-Setup.exe
+            MediaCLI-Setup.exe.sig
+            latest.json
