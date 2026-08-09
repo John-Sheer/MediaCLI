@@ -231,8 +231,11 @@ export async function youtubeiSearch(query: string, limit = 15): Promise<Youtube
     },
   });
   const items: any[] = [];
+  // Deux structures possibles selon le client InnerTube :
+  //  - WEB : contents.twoColumnSearchResultsRenderer.primaryContents.sectionListRenderer.contents
+  //  - ANDROID (récent) : contents.sectionListRenderer.contents
   const sections = data.contents?.twoColumnSearchResultsRenderer?.primaryContents
-    ?.sectionListRenderer?.contents ?? [];
+    ?.sectionListRenderer?.contents ?? data.contents?.sectionListRenderer?.contents ?? [];
   for (const sec of sections) {
     const rend = sec.itemSectionRenderer?.contents ?? [];
     for (const it of rend) items.push(it);
@@ -240,10 +243,22 @@ export async function youtubeiSearch(query: string, limit = 15): Promise<Youtube
     if (cont) break;
   }
   const results: YoutubeiResult[] = [];
+  const seen = new Set<string>();
+  const text = (v: any, ...paths: string[]) => {
+    for (const p of paths) {
+      const node = p.split(".").reduce((o, k) => o?.[k], v);
+      const s = node?.runs?.map((r: any) => r.text).join("") ?? node?.simpleText;
+      if (s) return s;
+    }
+    return undefined;
+  };
   for (const it of items) {
-    const v = it.videoRenderer;
-    if (!v) continue;
-    const dur = v.lengthText?.simpleText ?? "0:00";
+    // Clients récents (ANDROID) renvoient compactVideoRenderer / gridVideoRenderer
+    // au lieu de videoRenderer : on accepte les trois.
+    const v = it.videoRenderer ?? it.compactVideoRenderer ?? it.gridVideoRenderer;
+    if (!v || seen.has(v.videoId)) continue;
+    seen.add(v.videoId);
+    const dur = v.lengthText?.simpleText ?? text(v, "lengthText.runs") ?? "0:00";
     const parts = dur.split(":").map(Number);
     const duration = parts.length === 3
       ? parts[0] * 3600 + parts[1] * 60 + parts[2]
@@ -252,10 +267,10 @@ export async function youtubeiSearch(query: string, limit = 15): Promise<Youtube
       : parts[0] ?? 0;
     results.push({
       id: v.videoId,
-      title: v.title?.runs?.map((r: any) => r.text).join("") ?? v.title?.simpleText ?? "Sans titre",
+      title: text(v, "title.runs", "title.simpleText") ?? "Sans titre",
       duration,
       thumbnail: v.thumbnail?.thumbnails?.at(-1)?.url,
-      channel: v.ownerText?.runs?.map((r: any) => r.text).join("") ?? v.shortBylineText?.runs?.map((r: any) => r.text).join("") ?? "Inconnu",
+      channel: text(v, "ownerText.runs", "longBylineText.runs", "shortBylineText.runs") ?? "Inconnu",
     });
     if (results.length >= limit) break;
   }

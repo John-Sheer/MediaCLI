@@ -512,11 +512,21 @@ async fn youtubei_search_android(
 
 fn parse_search_response(data: &serde_json::Value, limit: usize) -> Vec<SearchResult> {
     let mut results = Vec::new();
+    let mut seen_ids = std::collections::HashSet::new();
+
+    // Deux structures possibles selon le client InnerTube :
+    //  - WEB : /contents/twoColumnSearchResultsRenderer/primaryContents/sectionListRenderer/contents
+    //  - ANDROID (récent) : /contents/sectionListRenderer/contents
     let sections = data
         .pointer("/contents/twoColumnSearchResultsRenderer/primaryContents/sectionListRenderer/contents")
         .and_then(|v| v.as_array())
         .cloned()
-        .unwrap_or_default();
+        .unwrap_or_else(|| {
+            data.pointer("/contents/sectionListRenderer/contents")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default()
+        });
     for sec in &sections {
         let items = sec
             .pointer("/itemSectionRenderer/contents")
@@ -524,70 +534,70 @@ fn parse_search_response(data: &serde_json::Value, limit: usize) -> Vec<SearchRe
             .cloned()
             .unwrap_or_default();
         for item in &items {
-            if let Some(v) = item.get("videoRenderer") {
-                let dur_text = v
-                    .pointer("/lengthText/simpleText")
-                    .and_then(|t| t.as_str())
-                    .unwrap_or("0:00");
-                let id = v
-                    .get("videoId")
-                    .and_then(|t| t.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let title = v
-                    .pointer("/title/runs")
-                    .and_then(|runs| runs.as_array())
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(|r| r.get("text").and_then(|t| t.as_str()))
-                            .collect::<Vec<_>>()
-                            .join("")
-                    })
-                    .or_else(|| v.pointer("/title/simpleText").and_then(|t| t.as_str()).map(String::from))
-                    .unwrap_or_else(|| "Sans titre".into());
-                let thumbnail = v
-                    .pointer("/thumbnail/thumbnails")
-                    .and_then(|t| t.as_array())
-                    .and_then(|arr| arr.last())
-                    .and_then(|t| t.get("url").and_then(|u| u.as_str()))
-                    .map(String::from);
-                let channel = v
-                    .pointer("/ownerText/runs")
-                    .and_then(|runs| runs.as_array())
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(|r| r.get("text").and_then(|t| t.as_str()))
-                            .collect::<Vec<_>>()
-                            .join("")
-                    })
-                    .or_else(|| {
-                        v.pointer("/shortBylineText/runs")
-                            .and_then(|runs| runs.as_array())
-                            .map(|arr| {
-                                arr.iter()
-                                    .filter_map(|r| r.get("text").and_then(|t| t.as_str()))
-                                    .collect::<Vec<_>>()
-                                    .join("")
-                            })
-                    })
-                    .unwrap_or_else(|| "Inconnu".into());
-                results.push(SearchResult {
-                    id,
-                    title,
-                    duration: parse_duration(dur_text),
-                    thumbnail,
-                    channel,
-                });
-                if results.len() >= limit {
-                    break;
-                }
+            if results.len() >= limit {
+                break;
             }
+            // Les clients récents (ANDROID) renvoient compactVideoRenderer /
+            // gridVideoRenderer au lieu de videoRenderer : on accepte les trois.
+            let v = item
+                .get("videoRenderer")
+                .or_else(|| item.get("compactVideoRenderer"))
+                .or_else(|| item.get("gridVideoRenderer"));
+            let v = match v {
+                Some(v) => v,
+                None => continue,
+            };
+            let id = v
+                .get("videoId")
+                .and_then(|t| t.as_str())
+                .unwrap_or("")
+                .to_string();
+            if id.is_empty() || !seen_ids.insert(id.clone()) {
+                continue;
+            }
+            let title = extract_text(v, "/title/runs")
+                .or_else(|| v.pointer("/title/simpleText").and_then(|t| t.as_str()).map(String::from))
+                .unwrap_or_else(|| "Sans titre".into());
+            let dur_text = v
+                .pointer("/lengthText/simpleText")
+                .and_then(|t| t.as_str())
+                .map(String::from)
+                .or_else(|| extract_text(v, "/lengthText/runs"))
+                .unwrap_or_else(|| "0:00".into());
+            let thumbnail = v
+                .pointer("/thumbnail/thumbnails")
+                .and_then(|t| t.as_array())
+                .and_then(|arr| arr.last())
+                .and_then(|t| t.get("url").and_then(|u| u.as_str()))
+                .map(String::from);
+            let channel = extract_text(v, "/ownerText/runs")
+                .or_else(|| extract_text(v, "/longBylineText/runs"))
+                .or_else(|| extract_text(v, "/shortBylineText/runs"))
+                .unwrap_or_else(|| "Inconnu".into());
+            results.push(SearchResult {
+                id,
+                title,
+                duration: parse_duration(&dur_text),
+                thumbnail,
+                channel,
+            });
         }
         if results.len() >= limit {
             break;
         }
     }
     results
+}
+
+fn extract_text(v: &serde_json::Value, path: &str) -> Option<String> {
+    v.pointer(path)
+        .and_then(|runs| runs.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|r| r.get("text").and_then(|t| t.as_str()))
+                .collect::<Vec<_>>()
+                .join("")
+        })
 }
 
 // ─── SIGNATURE DECRYPTION ───
@@ -2346,11 +2356,20 @@ struct ScanBudget {
 }
 
 impl ScanBudget {
+    #[cfg(not(target_os = "android"))]
     fn new() -> Self {
         Self {
             entries_left: 500_000,
             start: Instant::now(),
             max_elapsed: Duration::from_secs(10),
+        }
+    }
+    #[cfg(target_os = "android")]
+    fn android() -> Self {
+        Self {
+            entries_left: 2_000_000,
+            start: Instant::now(),
+            max_elapsed: Duration::from_secs(30),
         }
     }
     // Consomme un "coup" (une entrée du filesystem). Renvoie true quand le
@@ -2368,7 +2387,13 @@ fn run_scan_folders() -> Vec<FolderInfo> {
     let mut dirs: Vec<FolderInfo> = Vec::new();
     let mut seen: HashMap<String, (bool, bool, usize)> = HashMap::new();
     let max = 5000;
+    #[cfg(target_os = "android")]
+    let max_depth = 8;
+    #[cfg(not(target_os = "android"))]
     let max_depth = 6;
+    #[cfg(target_os = "android")]
+    let mut budget = ScanBudget::android();
+    #[cfg(not(target_os = "android"))]
     let mut budget = ScanBudget::new();
 
     let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).unwrap_or_default();
@@ -2391,23 +2416,13 @@ fn run_scan_folders() -> Vec<FolderInfo> {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        // On scanner les dossiers "classiques" D'ABORD (rapides, ils couvrent
-        // la plupart des médias), puis la racine /storage/emulated/0 EN DERNIER
-        // pour attraper les dossiers persos. Le budget (ScanBudget) borne le
-        // walk sur la racine : sans lui, parcourir tout le stockage faisait
-        // paraître le scan "bloqué".
-        for p in &[
-            "/storage/emulated/0/Music",
-            "/storage/emulated/0/Movies",
-            "/storage/emulated/0/Download",
-            "/storage/emulated/0/DCIM",
-            "/storage/emulated/0/Pictures",
-            "/storage/emulated/0",
-        ] {
-            let root = PathBuf::from(p);
-            if root.exists() {
-                roots.push(root);
-            }
+        // Android : une seule passe depuis la racine du stockage partagé.
+        // Les dossiers "classiques" (Music, Download, DCIM...) sont dedans ;
+        // les scanner séparément gaspillait le budget (ScanBudget) et la racine
+        // n'était jamais atteinte → dossiers persos manquants dans les résultats.
+        let root = PathBuf::from("/storage/emulated/0");
+        if root.exists() {
+            roots.push(root);
         }
     }
 
