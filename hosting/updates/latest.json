@@ -1,10 +1,10 @@
 {
-  "version": "0.1.1",
-  "notes": "Correction des bugs — Exe Windows disponible, corrections de stabilité.",
-  "pub_date": "2026-07-26T00:00:00Z",
+  "version": "0.1.8",
+  "notes": "Scan Android, permissions, streaming et UI ameliore — APK signe disponible.",
+  "pub_date": "2026-08-09T00:00:00Z",
   "platforms": {
     "android-arm64": {
-      "url": "https://mediacli-app.web.app/updates/latest.apk",
+      "url": "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.8/MediaCLI.apk",
       "signature": ""
     },
     "windows-x64": {
