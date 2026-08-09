@@ -51,56 +51,90 @@
     .tagline{color:var(--muted);font-size:1.05rem;line-height:1.6;max-width:360px;margin:0 auto 40px}
 
     /* ===== PLATFORM SELECTOR ===== */
-    .platforms{display:flex;justify-content:center;gap:12px;margin-bottom:32px;flex-wrap:wrap}
+    .platforms{display:flex;justify-content:center;gap:16px;margin-bottom:30px;flex-wrap:wrap}
 
     .plat-btn{
-      display:inline-flex;align-items:center;gap:8px;
-      padding:12px 28px;border-radius:10px;
-      font-size:.95rem;font-weight:600;text-decoration:none;
-      transition:all .25s ease;cursor:pointer;border:none;
+      position:relative;
+      display:flex;flex-direction:column;align-items:center;gap:7px;
+      min-width:172px;padding:28px 20px 18px;border-radius:16px;
+      font-weight:600;text-decoration:none;color:var(--text);
+      background:var(--surface);border:1px solid var(--border);
+      transition:transform .22s ease,border-color .22s ease,box-shadow .22s ease;
+      cursor:pointer;
     }
-    .plat-btn svg{width:18px;height:18px;flex-shrink:0}
+    .plat-btn::before{
+      content:'';position:absolute;inset:-1px;border-radius:16px;pointer-events:none;
+      background:radial-gradient(150px 70px at 50% 0%,rgba(200,30,58,.14),transparent 70%);
+      opacity:0;transition:opacity .22s ease;
+    }
+    .plat-btn:hover{transform:translateY(-4px);border-color:rgba(200,30,58,.4);box-shadow:0 16px 44px rgba(0,0,0,.55)}
+    .plat-btn:hover::before{opacity:1}
+    .plat-btn:active{transform:translateY(-1px)}
+    .plat-btn:focus-visible{outline:2px solid var(--red);outline-offset:3px}
 
-    .plat-android{
+    .pt-tag{
+      position:absolute;top:-10px;left:50%;transform:translateX(-50%);
+      font-size:.58rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;
+      padding:4px 12px;border-radius:20px;white-space:nowrap;
       background:linear-gradient(135deg,var(--red-dim),var(--red));
-      color:#fff;box-shadow:0 4px 24px rgba(200,30,58,.3);
+      color:#fff;box-shadow:0 4px 16px rgba(200,30,58,.4);
     }
-    .plat-android:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(200,30,58,.45)}
-    .plat-android:active{transform:translateY(0)}
 
-    .plat-windows{
-      background:var(--surface);color:var(--text);
-      border:1px solid var(--border);
+    .pt-icon{
+      width:48px;height:48px;border-radius:13px;
+      display:flex;align-items:center;justify-content:center;
+      margin-bottom:4px;transition:transform .22s ease;
     }
-    .plat-windows:hover{border-color:rgba(200,30,58,.3);transform:translateY(-2px)}
+    .plat-btn:hover .pt-icon{transform:scale(1.08)}
+    .pt-icon svg{width:23px;height:23px}
 
-    .plat-portable{
-      background:transparent;color:var(--muted);
-      border:1px dashed var(--border);
+    .plat-android .pt-icon{
+      background:linear-gradient(135deg,var(--red-dim),var(--red));color:#fff;
+      box-shadow:0 8px 22px rgba(200,30,58,.35);
     }
-    .plat-portable:hover{border-color:var(--red);color:var(--text);transform:translateY(-2px)}
+    .plat-android{box-shadow:0 12px 36px rgba(200,30,58,.1)}
+
+    .plat-windows .pt-icon{background:rgba(59,130,246,.1);color:#7ab3ff;border:1px solid rgba(59,130,246,.25)}
+    .plat-portable .pt-icon{background:rgba(52,184,138,.1);color:#5ce0b0;border:1px solid rgba(52,184,138,.25)}
+
+    .pt-label{font-size:1rem;letter-spacing:.2px}
+    .pt-size{font-size:.74rem;color:var(--muted);font-weight:500;display:inline-flex;align-items:center;gap:5px;margin-top:2px}
+    .pt-size svg{width:12px;height:12px;opacity:.55}
 
     .meta{
-      display:flex;flex-direction:column;align-items:center;gap:8px;
-      margin-top:18px;
+      display:flex;flex-direction:column;align-items:center;gap:10px;
+      margin-top:16px;
     }
     .version{color:var(--muted);font-size:.78rem}
-    .note{margin:18px auto 0;max-width:520px;color:var(--muted);font-size:.82rem;text-align:center}
-    .note code{background:var(--surface);border:1px solid var(--border);padding:1px 6px;border-radius:4px;color:var(--text);font-size:.8rem}
+    .note{
+      margin:20px auto 0;max-width:560px;
+      display:flex;align-items:center;gap:11px;text-align:left;
+      color:var(--muted);font-size:.82rem;line-height:1.55;
+      background:var(--surface);border:1px solid var(--border);
+      border-left:3px solid var(--green);
+      padding:12px 18px;border-radius:10px;
+    }
+    .note svg{width:16px;height:16px;color:var(--green);flex-shrink:0}
+    .note code{
+      font-size:.78rem;color:var(--text);white-space:nowrap;
+      background:rgba(255,255,255,.05);border:1px solid var(--border);
+      padding:2px 7px;border-radius:5px;
+    }
     .badge{
-      display:inline-block;padding:3px 10px;
-      background:rgba(255,255,255,.03);border:1px solid var(--border);
-      border-radius:20px;font-size:.7rem;color:var(--muted);
+      display:inline-flex;align-items:center;gap:7px;
+      padding:5px 14px;
+      background:var(--surface);border:1px solid var(--border);
+      border-radius:20px;font-size:.72rem;color:var(--muted);
     }
-    .dl-details{
-      display:flex;gap:16px;flex-wrap:wrap;justify-content:center;
-      margin-top:4px;
-    }
+    .badge::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+    .dl-details{display:flex;justify-content:center;margin-top:6px}
     .dl-detail{
-      display:flex;align-items:center;gap:5px;
-      font-size:.7rem;color:var(--muted);
+      display:inline-flex;align-items:center;gap:7px;
+      font-size:.76rem;color:var(--muted);
+      padding:7px 16px;border-radius:20px;
+      background:var(--surface);border:1px solid var(--border);
     }
-    .dl-detail svg{width:13px;height:13px;opacity:.5}
+    .dl-detail svg{width:14px;height:14px;color:var(--green);opacity:.9}
 
     /* ===== SECTION GENERIC ===== */
     .sep{
@@ -162,10 +196,13 @@
       .brand{font-size:2rem}
       .features{grid-template-columns:1fr 1fr;gap:10px}
       .feat{padding:16px 14px}
-      .plat-btn{padding:11px 22px;font-size:.88rem}
+      .platforms{gap:12px}
+      .plat-btn{min-width:150px;padding:24px 16px 16px}
     }
     @media(max-width:380px){
       .features{grid-template-columns:1fr}
+      .plat-btn{min-width:100%}
+      .note{flex-direction:column;text-align:center}
     }
   </style>
 </head>
@@ -194,20 +231,27 @@
 
     <div class="platforms">
       <a href="https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.8/MediaCLI.apk" download="MediaCLI.apk" class="plat-btn plat-android" id="dlAndroid" onclick="dlFeedback(this,'APK',event)">
-        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-        Android
+        <span class="pt-tag">Recommandé</span>
+        <span class="pt-icon"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18.5h2"/></svg></span>
+        <span class="pt-label">Android</span>
+        <span class="pt-size"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 12H2M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/><path d="M6 16h12"/></svg><span id="apkSizeTxt">APK ~26 Mo</span></span>
       </a>
       <a href="https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.8/MediaCLI-Setup.exe" class="plat-btn plat-windows" id="dlWindows" onclick="dlFeedback(this,'Windows',event)">
-        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-        Windows
+        <span class="pt-icon"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>
+        <span class="pt-label">Windows</span>
+        <span class="pt-size"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 12H2M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/><path d="M6 16h12"/></svg><span id="exeSizeTxt">Setup ~52 Mo</span></span>
       </a>
       <a href="https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.8/MediaCLI-Portable.zip" class="plat-btn plat-portable" id="dlPortable" onclick="dlFeedback(this,'Portable',event)">
-        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20.5 7.5L12 2 3.5 7.5v9L12 22l8.5-5.5v-9zM12 22v-9M3.5 7.5L12 13l8.5-5.5"/></svg>
-        Portable
+        <span class="pt-icon"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20.5 7.5L12 2 3.5 7.5v9L12 22l8.5-5.5v-9zM12 22v-9M3.5 7.5L12 13l8.5-5.5"/></svg></span>
+        <span class="pt-label">Portable</span>
+        <span class="pt-size"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 12H2M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/><path d="M6 16h12"/></svg><span id="zipSizeTxt">Portable ~60 Mo</span></span>
       </a>
     </div>
 
-    <p class="note">Portable Windows : dézipper puis lancer <code>MediaCLI.exe</code> — aucune installation requise.</p>
+    <p class="note">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      <span>Portable Windows : dézipper puis lancer <code>MediaCLI.exe</code> — aucune installation requise.</span>
+    </p>
 
     <div class="meta">
       <span class="version" id="versionInfo">Chargement...</span>
@@ -215,18 +259,6 @@
         <span class="badge">Android 7.0+ &middot; Windows 10+</span>
       </div>
       <div class="dl-details">
-        <span class="dl-detail" id="apkSize">
-          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-          APK ~26 Mo
-        </span>
-        <span class="dl-detail" id="exeSize">
-          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-          Setup ~52 Mo
-        </span>
-        <span class="dl-detail" id="zipSize">
-          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20.5 7.5L12 2 3.5 7.5v9L12 22l8.5-5.5v-9zM12 22v-9M3.5 7.5L12 13l8.5-5.5"/></svg>
-          Portable ~60 Mo
-        </span>
         <span class="dl-detail">
           <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
           Gratuit &middot; Pas de pub
@@ -339,9 +371,9 @@
     }
 
     loadAssetSizes().then(sizes => {
-      if (sizes.apk) document.getElementById('apkSize').childNodes[2].textContent = ' APK ' + formatBytes(sizes.apk);
-      if (sizes.exe) document.getElementById('exeSize').childNodes[2].textContent = ' Setup ' + formatBytes(sizes.exe);
-      if (sizes.zip) document.getElementById('zipSize').childNodes[2].textContent = ' Portable ' + formatBytes(sizes.zip);
+      if (sizes.apk) document.getElementById('apkSizeTxt').textContent = formatBytes(sizes.apk);
+      if (sizes.exe) document.getElementById('exeSizeTxt').textContent = formatBytes(sizes.exe);
+      if (sizes.zip) document.getElementById('zipSizeTxt').textContent = formatBytes(sizes.zip);
     }).catch(() => {});
 
     const origText = {};
