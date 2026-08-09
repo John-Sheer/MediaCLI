@@ -53,25 +53,46 @@ jobs:
         run: npm install -g @tauri-apps/cli
 
       - name: Build Android app
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          cargo install cargo-ndk
           npm run build
           npx tauri android build --target aarch64
-          mkdir -p src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a
-          cp src-tauri/target/aarch64-linux-android/release/libmedia_cli_lib.so src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a/libmedia_cli_lib.so
+          # Sur Linux, tauri cree deja le symlink du .so dans jniLibs - copie seulement si absent
+          LIB_SRC=src-tauri/target/aarch64-linux-android/release/libmedia_cli_lib.so
+          LIB_DST=src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a/libmedia_cli_lib.so
+          if [ ! -e "$LIB_DST" ]; then
+            mkdir -p "$(dirname "$LIB_DST")"
+            cp "$LIB_SRC" "$LIB_DST"
+          fi
+
+      - name: Sign APK (si keystore configure)
+        if: secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != ''
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > keystore.jks
+          ZIPALIGN=$(ls "$ANDROID_HOME"/build-tools/*/zipalign | sort -V | tail -1)
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          APK=src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk
+          "$ZIPALIGN" -f 4 "$APK" aligned.apk
+          "$APKSIGNER" sign --ks keystore.jks --ks-pass env:KEYSTORE_PASS \
+            --ks-key-alias "$KEY_ALIAS" --key-pass env:KEY_PASS \
+            --out MediaCLI.apk aligned.apk
 
       - name: Check APK output
         run: |
           find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' -print
+          ls -la MediaCLI.apk 2>/dev/null || true
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: mediacli-android-apk
-          path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          path: |
+            MediaCLI.apk
+            src-tauri/gen/android/app/build/outputs/apk/**/*.apk
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
@@ -80,4 +101,5 @@ jobs:
           draft: false
           generate_release_notes: true
           files: |
+            MediaCLI.apk
             src-tauri/gen/android/app/build/outputs/apk/**/*.apk
