@@ -31,10 +31,6 @@
       width:100%;padding:72px 24px 56px;text-align:center;
       background:#000;position:relative;overflow:hidden;
     }
-    .hero::after{
-      content:'';position:absolute;bottom:0;left:0;right:0;height:1px;
-      background:var(--border);
-    }
 
     .brand-row{
       display:flex;align-items:center;justify-content:center;gap:14px;
@@ -103,9 +99,15 @@
     .dl-detail svg{width:14px;height:14px;color:var(--red);opacity:.85}
 
     /* ===== SECTION GENERIC ===== */
-    .sep{
-      width:48px;height:1px;margin:52px auto;
-      background:var(--border);
+    .divider{
+      display:flex;align-items:center;justify-content:center;gap:16px;
+      margin:0 auto;padding:0 24px;
+    }
+    .divider--section{margin:56px auto 16px}
+    .dv-line{width:64px;height:1px;background:var(--border)}
+    .dv-diamond{
+      width:7px;height:7px;transform:rotate(45deg);border-radius:1px;
+      background:var(--red);box-shadow:0 0 14px rgba(200,30,58,.55);
     }
     .sec-label{
       color:var(--red);font-size:.72rem;font-weight:600;
@@ -229,6 +231,12 @@
         </span>
       </div>
     </div>
+
+    <div class="divider" aria-hidden="true">
+      <span class="dv-line"></span>
+      <span class="dv-diamond"></span>
+      <span class="dv-line"></span>
+    </div>
   </div>
 
   <p class="sec-label">Fonctionnalités</p>
@@ -266,7 +274,11 @@
     </div>
   </div>
 
-  <div class="sep"></div>
+  <div class="divider divider--section" aria-hidden="true">
+    <span class="dv-line"></span>
+    <span class="dv-diamond"></span>
+    <span class="dv-line"></span>
+  </div>
 
   <div class="changelog">
     <p class="sec-label">Nouveautés</p>
