@@ -65,13 +65,16 @@ jobs:
           fi
 
       - name: Sign APK (si keystore configure)
-        if: secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != ''
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$KEYSTORE_PASS" ]; then
+            echo "Keystore secrets non configures - APK non signe"
+            exit 0
+          fi
           echo "$KEYSTORE_B64" | base64 -d > keystore.jks
           ZIPALIGN=$(ls "$ANDROID_HOME"/build-tools/*/zipalign | sort -V | tail -1)
           APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
