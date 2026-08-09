@@ -201,11 +201,11 @@
         <span class="badge">Android 7.0+ &middot; Windows 10+</span>
       </div>
       <div class="dl-details">
-        <span class="dl-detail">
+        <span class="dl-detail" id="apkSize">
           <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
           APK ~26 Mo
         </span>
-        <span class="dl-detail">
+        <span class="dl-detail" id="exeSize">
           <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
           Setup ~52 Mo
         </span>
@@ -290,6 +290,39 @@
       .catch(() => {
         document.getElementById('versionInfo').textContent = 'Version 0.1.0';
       });
+
+    function formatBytes(b) {
+      if (b >= 1073741824) return (b / 1073741824).toFixed(1).replace('.', ',') + ' Go';
+      if (b >= 1048576) return (b / 1048576).toFixed(1).replace('.', ',') + ' Mo';
+      if (b >= 1024) return (b / 1024).toFixed(1).replace('.', ',') + ' Ko';
+      return b + ' o';
+    }
+
+    function loadAssetSizes() {
+      const cacheKey = 'mediacli_asset_sizes_v1';
+      try {
+        const cached = JSON.parse(localStorage.getItem(cacheKey));
+        if (cached && Date.now() - cached.t < 3600000) return Promise.resolve(cached.sizes);
+      } catch (e) {}
+
+      return fetch('https://api.github.com/repos/John-Sheer/MediaCLI/releases/latest')
+        .then(r => r.json())
+        .then(data => {
+          const sizes = {};
+          (data.assets || []).forEach(a => {
+            const n = a.name.toLowerCase();
+            if (n.endsWith('.apk')) sizes.apk = a.size;
+            else if (n.endsWith('setup.exe')) sizes.exe = a.size;
+          });
+          try { localStorage.setItem(cacheKey, JSON.stringify({ t: Date.now(), sizes: sizes })); } catch (e) {}
+          return sizes;
+        });
+    }
+
+    loadAssetSizes().then(sizes => {
+      if (sizes.apk) document.getElementById('apkSize').childNodes[2].textContent = ' APK ' + formatBytes(sizes.apk);
+      if (sizes.exe) document.getElementById('exeSize').childNodes[2].textContent = ' Setup ' + formatBytes(sizes.exe);
+    }).catch(() => {});
 
     const origText = {};
     function dlFeedback(el, name, e) {
