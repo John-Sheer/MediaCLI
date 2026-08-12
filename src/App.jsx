@@ -15,6 +15,7 @@ import { useStore } from "./store/store.jsx";
 import { useActions } from "./store/actions.js";
 import { api } from "./api/client.js";
 import { listen } from "@tauri-apps/api/event";
+import { AlertTriangle, X } from "lucide-react";
 
 
 export default function App() {
@@ -22,42 +23,7 @@ export default function App() {
   const actions = useActions();
   const IS_ANDROID = /android/i.test(navigator.userAgent || "");
   const scrollRef = useRef(null);
-  const vpnPrompted = useRef(state.vpnPrompted);
-  const [resumeTime, setResumeTime] = useState(0);
   const [showQueue, setShowQueue] = useState(false);
-  const resumeApplied = useRef(false);
-
-  // Reprise automatique de la dernière piste au démarrage
-  useEffect(() => {
-    try {
-      const data = JSON.parse(localStorage.getItem("mediacli-resume") || "null");
-      if (data && data.song && data.url && typeof data.song === "object" && typeof data.url === "string") {
-        const isLocalResume = data.url.includes("/local?path=");
-        if (isLocalResume) {
-          const path = decodeURIComponent(data.url.split("path=")[1]);
-          dispatch({ type: "PLAY_LOCAL", song: data.song, path, playlist: [] });
-        } else {
-          dispatch({ type: "PLAY", song: data.song, playlist: [] });
-        }
-        setResumeTime(data.time || 0);
-      }
-    } catch (err) {
-      console.error("[resume] Erreur :", err);
-      if (err instanceof SyntaxError) {
-        localStorage.removeItem("mediacli-resume");
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Réinitialiser resumeTime quand la piste change (pas au premier chargement)
-  useEffect(() => {
-    if (resumeApplied.current) {
-      setResumeTime(0);
-    } else {
-      resumeApplied.current = true;
-    }
-  }, [state.streamUrl]);
 
   // Thumbbar: listen for previous/next from taskbar buttons
   useEffect(() => {
@@ -110,39 +76,29 @@ export default function App() {
   }, [state.torActive]);
 
   const runSearch = (query) => {
-    if (!vpnPrompted.current) {
-      dispatch({ type: "SET_VPN_MODAL", modal: { type: "search" } });
-      return;
-    }
     actions.search(query);
   };
 
   const confirmVpn = async () => {
     dispatch({ type: "SET_VPN_MODAL", modal: null });
     if (!state.torActive) await actions.setTor(true);
-    vpnPrompted.current = true;
-    actions.search(state.query);
   };
 
   const skipVpn = () => {
     dispatch({ type: "SET_VPN_MODAL", modal: null });
-    vpnPrompted.current = true;
-    actions.search(state.query);
+  };
+
+  const handleVpnToggle = () => {
+    if (state.torActive) {
+      actions.setTor(false);
+    } else {
+      dispatch({ type: "SET_VPN_MODAL", modal: { type: "manual" } });
+    }
   };
 
   const playStreaming = (song) => actions.play(song, state.results);
 
   const playLocalFile = (song, path) => actions.playLocal(song, path, state.localFiles);
-
-  const handleResume = (data) => {
-    if (data?.url?.includes("/local?path=")) {
-      const path = decodeURIComponent(data.url.split("path=")[1]);
-      dispatch({ type: "PLAY_LOCAL", song: data.song, path, playlist: [] });
-    } else {
-      dispatch({ type: "PLAY", song: data.song, playlist: [] });
-    }
-    setResumeTime(data.time || 0);
-  };
 
   const handleAddToPlaylist = (id, track) => actions.addToPlaylist(id, track);
 
@@ -196,6 +152,22 @@ export default function App() {
       <div className="fixed inset-0 bg-grain pointer-events-none" />
       {!state.playerFullscreen && <TitleBar onAbout={() => dispatch({ type: "TOGGLE_ABOUT", open: true })} />}
 
+      {state.error && (
+        <div className="fixed top-12 left-0 right-0 z-[9998] flex justify-center px-4 pointer-events-none">
+          <div className="pointer-events-auto flex items-start gap-2 px-3 py-2 rounded-lg bg-red-500/[0.12] ring-1 ring-red-500/25 text-[11px] text-red-300/95 shadow-lg shadow-black/40 max-w-md">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-[1px] text-red-400" />
+            <span className="break-words min-w-0 leading-snug">{state.error}</span>
+            <button
+              onClick={() => dispatch({ type: "SET_ERROR", error: null })}
+              className="ml-1 shrink-0 text-red-400/70 hover:text-red-300 transition-colors"
+              title="Fermer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
       <div
         className={`${state.playerFullscreen ? "hidden" : "flex-1 min-h-0 flex flex-col"}`}
       >
@@ -207,7 +179,7 @@ export default function App() {
           )}
           <HomeHeader
             torActive={state.torActive}
-            onToggleTor={(on) => actions.setTor(on)}
+            onToggleTor={handleVpnToggle}
             onAbout={() => dispatch({ type: "TOGGLE_ABOUT", open: true })}
           />
           <HomeTabs homeTab={state.homeTab} onSwitch={switchTab} playlistCount={Object.keys(state.playlists).length} />
@@ -238,7 +210,6 @@ export default function App() {
                 onAddToPlaylist={handleAddToPlaylist}
                 onCreateAndAdd={handleCreateAndAdd}
                 onOpenDownloads={handleOpenDownloads}
-                onResume={handleResume}
               />
             )}
 
@@ -277,7 +248,6 @@ export default function App() {
         onCycleRepeat={() => dispatch({ type: "CYCLE_REPEAT" })}
         playlist={state.playlist}
         onPlayAt={actions.playAt}
-        resumeTime={resumeTime}
         playlists={state.playlists}
         onSaveQueue={handleSaveQueue}
         onPlayPlaylist={handlePlayPlaylist}

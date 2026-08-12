@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Headphones, Music, Loader2, Check, Play, Download, Plus, ListPlus, AudioLines } from "lucide-react";
+import { Headphones, Music, Loader2, Check, Play, Download, Plus, ListPlus, AudioLines, AlertTriangle } from "lucide-react";
 
 const THUMB_PROXY = "http://127.0.0.1:8787/thumb?url=";
 
@@ -31,6 +31,7 @@ export default function SongCard({ song, onPlay, onDownload, status, progress, m
   const renderButton = (type, label, Icon) => {
     const isDownloading = status?.[type] === "downloading";
     const isDone = status?.[type] === "done";
+    const isError = status?.[type] === "error";
     const percent = progress?.[type] || 0;
     const size = realSize(type);
 
@@ -38,23 +39,27 @@ export default function SongCard({ song, onPlay, onDownload, status, progress, m
       <button
         onClick={(e) => { e.stopPropagation(); onDownload(song, type); }}
         disabled={isDownloading || isDone}
-        title={`Télécharger ${label}`}
+        title={isError ? `Échec du téléchargement ${label} — réessayer` : `Télécharger ${label}`}
         className={`group/btn relative flex items-center gap-1.5 pl-2 pr-2.5 py-1.5 rounded-lg overflow-hidden transition-all duration-200 active:scale-[0.93] disabled:cursor-default ${
           isDone
             ? "text-green-400/90 bg-green-400/[0.08]"
             : isDownloading
               ? "text-green-400/90 bg-green-400/[0.06] pb-2.5"
-              : "text-white/80 hover:text-green-400/90 hover:bg-green-400/[0.08]"
+              : isError
+                ? "text-red-400/90 bg-red-500/[0.08] hover:bg-red-500/[0.14]"
+                : "text-white/80 hover:text-green-400/90 hover:bg-green-400/[0.08]"
         }`}
       >
         {isDownloading ? (
           <Loader2 className="w-3 h-3 animate-spin shrink-0" />
         ) : isDone ? (
           <Check className="w-3 h-3 shrink-0" />
+        ) : isError ? (
+          <AlertTriangle className="w-3 h-3 shrink-0" />
         ) : (
           <Icon className="w-3 h-3 shrink-0 transition-transform duration-200 group-hover/btn:scale-110" />
         )}
-        <span className="text-[10px] font-medium leading-none">{isDownloading ? `${Math.round(percent)}%` : label}</span>
+        <span className="text-[10px] font-medium leading-none">{isDownloading ? `${Math.round(percent)}%` : isError ? "Réessayer" : label}</span>
         {!isDownloading && <span className="text-[9px] leading-none text-green-400/85 group-hover/btn:text-green-300 transition-colors">{size} Mo</span>}
         {isDownloading && (
           <div className="absolute left-0 right-0 bottom-[3px] h-[2px] bg-white/[0.06] rounded-full overflow-hidden mx-1">

@@ -1,5 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
-  <rect width="48" height="48" rx="10" fill="#0f0f13"/>
-  <text x="24" y="32" font-family="Inter,system-ui,sans-serif" font-size="26" font-weight="700" fill="#e11d48" text-anchor="middle">M</text>
-  <text x="32" y="34" font-family="monospace" font-size="12" font-weight="400" fill="#e11d48" opacity="0.6">_</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <g transform="translate(14.25,4.8) scale(0.591) translate(-36,-30)">
+    <path d="M66,30 C75,37 86,41 96,43 C96,43 96,68 96,82 C96,102 84,116 66,122 C48,116 36,102 36,82 C36,68 36,43 36,43 C46,41 57,37 66,30 Z" fill="#c81e3a"/>
+    <circle cx="66" cy="76" r="24" fill="none" stroke="#fff" stroke-width="3"/>
+    <path d="M60,66 C60,63 63,61 66,63 L79,72 C82,74 82,78 79,80 L66,89 C63,91 60,89 60,86 Z" fill="#fff"/>
+    <g transform="translate(76,82) scale(1.4)">
+      <path d="M4,9 V5 A2.5,2.5 0 0,1 9,5 V9" fill="none" stroke="#111" stroke-width="1.5"/>
+      <rect x="2" y="9" width="9" height="7" rx="1.5" fill="#111"/>
+      <circle cx="6.5" cy="12.5" r="1.5" fill="#fff"/>
+    </g>
+    <path d="M 85,90.7 A 24,24 0 0,0 88,85.6" fill="none" stroke="#fff" stroke-width="3"/>
+  </g>
 </svg>

@@ -1,6 +1,6 @@
 export function Logo({ className = "w-5 h-5" }) {
   return (
-    <svg viewBox="34 27 64 97" className={className}>
+    <svg viewBox="36 30 60 92" className={className}>
       <g transform="translate(0,0)">
         <path
           d="M66,30 C75,37 86,41 96,43 C96,43 96,68 96,82 C96,102 84,116 66,122 C48,116 36,102 36,82 C36,68 36,43 36,43 C46,41 57,37 66,30 Z"

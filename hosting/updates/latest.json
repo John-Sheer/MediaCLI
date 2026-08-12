@@ -1,15 +1,15 @@
 ﻿{
     "platforms":  {
                       "windows-x86_64":  {
-                                             "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.10/MediaCLI-Setup.exe",
-                                             "signature":  "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUhOcFoyNWhkSFZ5WlNCbWNtOXRJSFJoZFhKcElITmxZM0psZENCclpYa0tVbFZSVDBObWJFbFZWWEIxYVVadFZITnpRbTU0YjNGMk5tZGxjMjlYTDFGVWVGUkJhRXRGYWt3eFZHd3lSelVyYnpscFlYZERPVTF6VFhvM2QwbG5lWEJrYzB0NlRFZDJOelp1VmxKYWEweEVkMkZRVjJST0wzRnBXalJEVnpCcVJIZDNQUXAwY25WemRHVmtJR052YlcxbGJuUTZJSFJwYldWemRHRnRjRG94TnpnMk16RXpPRE15Q1dacGJHVTZUV1ZrYVdGRFRFbGZNQzR4TGpFd1gzZzJOQzF6WlhSMWNDNWxlR1VLVUVGSVF6Z3JUM2R5UVV0aWRrZHdaVGN3Y0c5Q1lrSTNXV2x6TlZoUGF6UTNWbXhNS3pGaVlUQlhTalpaTVhkU2NtUTVUV3BhTUVwaFJ6VXlTbGhCY2tRMmN6RjVPSFp2V1hjMFZVOXhXVVUyYmtJd1JGRTlQUW89"
+                                             "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.12/MediaCLI-Setup.exe",
+                                             "signature":  "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUhOcFoyNWhkSFZ5WlNCbWNtOXRJSFJoZFhKcElITmxZM0psZENCclpYa0tVbFZSVDBObWJFbFZWWEIxYVVVNU9XVkpjeTlGUTNwcE1ubzViRTlNYmpkdmNGQlhRMnBGSzB0TWIyNHdaVzVSUkVwMllWVjJOazFLVDFZME0ySkxielZsYjFGNFNFRlpiR1JQTjJrd1dWSTRkemRsUTB0VGFVSjRWVEk0Vm1GWVNHZFJQUXAwY25WemRHVmtJR052YlcxbGJuUTZJSFJwYldWemRHRnRjRG94TnpnMk5Ea3dNekkyQ1dacGJHVTZUV1ZrYVdGRFRFbGZNQzR4TGpFeVgzZzJOQzF6WlhSMWNDNWxlR1VLWlUxTGIwdHhVbXMwVFhWb1RVbHFhMDlMUzBGbE1IWTBlSEZ6Y1ZKbFpFWllkMVUwYldGMmNVOUpkamhXTW5CSk16UnpWR1I2Y25WWllsTTJaMUJIZG01aVZtZDFjWHAyTkM5T2NtbHRWSGRrV1RBeVFrRTlQUW89"
                                          },
                       "android-arm64":  {
-                                            "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.10/MediaCLI.apk",
+                                            "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.12/MediaCLI.apk",
                                             "signature":  ""
                                         }
                   },
-    "pub_date":  "2026-08-09T22:17:26Z",
-    "version":  "0.1.10",
-    "notes":  "Recherche corrigée (résultats affichés sur Android), scan des dossiers locaux complet et correctifs de stabilité."
+    "pub_date":  "2026-08-11T23:18:58Z",
+    "version":  "0.1.12",
+    "notes":  "Mises à jour depuis l\u0027application (Windows + Android), stabilité et correctifs."
 }

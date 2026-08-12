@@ -42,6 +42,17 @@ fn new_cmd(program: impl AsRef<std::ffi::OsStr>) -> Command {
     c
 }
 
+fn err_chain(e: &reqwest::Error) -> String {
+    let mut s = e.to_string();
+    let mut src = std::error::Error::source(e);
+    while let Some(x) = src {
+        s.push_str(" <- ");
+        s.push_str(&x.to_string());
+        src = x.source();
+    }
+    s
+}
+
 #[cfg(not(target_os = "windows"))]
 fn new_cmd(program: impl AsRef<std::ffi::OsStr>) -> Command {
     Command::new(program)
@@ -135,6 +146,12 @@ struct SearchParams {
 #[derive(Deserialize)]
 struct IdParams {
     id: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct DelayParams {
+    id: Option<String>,
+    delay: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -364,7 +381,7 @@ async fn innertube_request(
         .timeout(Duration::from_secs(15))
         .send()
         .await
-        .map_err(|e| format!("InnerTube request failed: {}", e))?;
+        .map_err(|e| format!("InnerTube request failed: {}", err_chain(&e)))?;
     if !resp.status().is_success() {
         return Err(format!("InnerTube {} HTTP {}", endpoint, resp.status()));
     }
@@ -414,7 +431,7 @@ async fn innertube_android_request(
         .timeout(Duration::from_secs(15))
         .send()
         .await
-        .map_err(|e| format!("InnerTube Android request failed: {}", e))?;
+        .map_err(|e| format!("InnerTube Android request failed: {}", err_chain(&e)))?;
     if !resp.status().is_success() {
         let status_code = resp.status().as_u16();
         let body_text = resp.text().await.unwrap_or_default();
@@ -466,7 +483,7 @@ async fn innertube_client_request(
         .timeout(Duration::from_secs(15))
         .send()
         .await
-        .map_err(|e| format!("InnerTube {} request failed: {}", client_name, e))?;
+        .map_err(|e| format!("InnerTube {} request failed: {}", client_name, err_chain(&e)))?;
     if !resp.status().is_success() {
         let status_code = resp.status().as_u16();
         let body_text = resp.text().await.unwrap_or_default();
@@ -1043,6 +1060,292 @@ async fn resolve_stream_url(state: &ServerState, id: &str) -> Option<String> {
     None
 }
 
+// ─── RÉSOLUTION DE FLUX POUR TÉLÉCHARGEMENT SANS YT-DLP ───
+
+fn ext_from_mime(mt: &str) -> String {
+    if mt.contains("webm") {
+        "webm".to_string()
+    } else if mt.contains("video") {
+        "mp4".to_string()
+    } else {
+        "m4a".to_string()
+    }
+}
+
+async fn decipher_format_url(
+    fmt: &serde_json::Value,
+    client: &reqwest::Client,
+    state: &ServerState,
+) -> Option<String> {
+    if let Some(u) = fmt.get("url").and_then(|u| u.as_str()) {
+        return Some(u.to_string());
+    }
+    let cipher_str = fmt
+        .get("signatureCipher")
+        .or_else(|| fmt.get("cipher"))
+        .and_then(|c| c.as_str())?;
+    let params: HashMap<_, _> = url::form_urlencoded::parse(cipher_str.as_bytes()).collect();
+    let real_url = params.get("url")?;
+    let mut parsed = url::Url::parse(real_url).ok()?;
+    if let Some(s) = params.get("s") {
+        let decoded_sig = decipher_signature(client, s, &state.player_script_cache, &state.sig_ops_cache).await;
+        let sp = params.get("sp").map(|x| &**x).unwrap_or("sig");
+        parsed.set_query(Some(&format!(
+            "{}&{}={}",
+            parsed.query().unwrap_or(""),
+            sp,
+            decoded_sig
+        )));
+    }
+    if let Some(n) = params.get("n") {
+        let decoded = decipher_n(client, n, &state.player_script_cache, &state.n_transform_cache).await;
+        parsed.set_query(Some(&format!(
+            "{}&n={}",
+            parsed.query().unwrap_or(""),
+            decoded
+        )));
+    }
+    Some(parsed.to_string())
+}
+
+async fn pick_audio_format(
+    data: &serde_json::Value,
+    client: &reqwest::Client,
+    state: &ServerState,
+) -> Option<(String, String)> {
+    let streaming = data.get("streamingData")?;
+    let mut formats: Vec<serde_json::Value> = Vec::new();
+    if let Some(f) = streaming.get("formats").and_then(|v| v.as_array()) {
+        formats.extend(f.iter().cloned());
+    }
+    if let Some(f) = streaming.get("adaptiveFormats").and_then(|v| v.as_array()) {
+        formats.extend(f.iter().cloned());
+    }
+    let mut candidates: Vec<_> = formats
+        .iter()
+        .filter(|f| f.get("url").is_some() || f.get("signatureCipher").is_some() || f.get("cipher").is_some())
+        .filter(|f| {
+            f.get("mimeType")
+                .and_then(|m| m.as_str())
+                .map(|m| m.trim_start().starts_with("audio/"))
+                .unwrap_or(false)
+        })
+        .cloned()
+        .collect();
+    if candidates.is_empty() {
+        return None;
+    }
+    candidates.sort_by(|a, b| {
+        let am4a = a.get("mimeType").and_then(|m| m.as_str()).map(|m| m.contains("mp4")).unwrap_or(false);
+        let bm4a = b.get("mimeType").and_then(|m| m.as_str()).map(|m| m.contains("mp4")).unwrap_or(false);
+        bm4a.cmp(&am4a).then(
+            b.get("bitrate").and_then(|x| x.as_u64()).unwrap_or(0)
+                .cmp(&a.get("bitrate").and_then(|x| x.as_u64()).unwrap_or(0)),
+        )
+    });
+    let fmt = &candidates[0];
+    let mt = fmt.get("mimeType").and_then(|m| m.as_str()).unwrap_or("");
+    let itag = fmt.get("itag").and_then(|x| x.as_u64()).unwrap_or(0);
+    let bitrate = fmt.get("bitrate").and_then(|x| x.as_u64()).unwrap_or(0);
+    let has_url = fmt.get("url").is_some();
+    let has_sc = fmt.get("signatureCipher").is_some() || fmt.get("cipher").is_some();
+    server_log!("[audio] picked itag={} mime={} bitrate={} has_url={} has_sc={} candidates={}", itag, mt, bitrate, has_url, has_sc, candidates.len());
+    let url = decipher_format_url(fmt, client, state).await?;
+    server_log!("[audio] URL (trunc 160): {}", url.chars().take(160).collect::<String>());
+    Some((url, ext_from_mime(mt)))
+}
+
+async fn probe_audio_url(client: &reqwest::Client, url: &str) -> Option<u64> {
+    let mut resp = client
+        .get(url)
+        .header("User-Agent", UA)
+        .header("Referer", "https://www.youtube.com/")
+        .header("Origin", "https://www.youtube.com")
+        .header("Range", "bytes=0-262143")
+        .send()
+        .await
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let total = resp
+        .headers()
+        .get("content-range")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.rsplit('/').next())
+        .and_then(|s| s.trim().parse::<u64>().ok());
+    let mut got: u64 = 0;
+    while let Ok(Some(chunk)) = resp.chunk().await {
+        got += chunk.len() as u64;
+        if got >= 1_000_000 {
+            break;
+        }
+    }
+    if got == 0 {
+        return None;
+    }
+    total
+}
+
+async fn resolve_audio_url(state: &ServerState, id: &str) -> Option<(String, String, u64)> {
+    let client = &state.client;
+    let key = state.innertube_key.as_deref().unwrap_or("AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8");
+    let tor = *state.tor_enabled.read().await;
+    if !tor {
+        if let Ok(data) = innertube_android_request(client, "player", key, serde_json::json!({ "videoId": id })).await {
+            let status = data.get("playabilityStatus").and_then(|s| s.get("status")).and_then(|v| v.as_str()).unwrap_or("unknown");
+            server_log!("[download] Android status {} pour {}", status, id);
+            if status == "OK" {
+                if let Some(res) = pick_audio_format(&data, client, state).await {
+                    if let Some(total) = probe_audio_url(client, &res.0).await {
+                        server_log!("[download] audio URL via Android (probe OK, {} bytes) pour {}", total, id);
+                        return Some((res.0, res.1, total));
+                    }
+                    server_log!("[download] audio URL via Android probe KO, fallback pour {}", id);
+                }
+            }
+        }
+    }
+    if !tor {
+        if let Ok(data) = innertube_client_request(
+            client, "player", key,
+            IOS_CLIENT_NAME, IOS_CLIENT_VERSION, "5",
+            "com.google.ios.youtube/21.10.2 (iPhone14,3; U; CPU iOS 18_2 like Mac OS X)",
+            serde_json::json!({ "videoId": id, "deviceMake": "Apple", "deviceModel": IOS_DEVICE_MODEL, "osName": "iPhone", "osVersion": "18.2" }),
+        ).await {
+            let status = data.get("playabilityStatus").and_then(|s| s.get("status")).and_then(|v| v.as_str()).unwrap_or("unknown");
+            server_log!("[download] iOS status {} pour {}", status, id);
+            if status == "OK" {
+                if let Some(res) = pick_audio_format(&data, client, state).await {
+                    if let Some(total) = probe_audio_url(client, &res.0).await {
+                        server_log!("[download] audio URL via iOS (probe OK, {} bytes) pour {}", total, id);
+                        return Some((res.0, res.1, total));
+                    }
+                    server_log!("[download] audio URL via iOS probe KO, fallback pour {}", id);
+                }
+            }
+        }
+    }
+    if let Ok(data) = watch_page_stream(client, id).await {
+        if let Some(res) = pick_audio_format(&data, client, state).await {
+            if let Some(total) = probe_audio_url(client, &res.0).await {
+                server_log!("[download] audio URL via watch page (probe OK, {} bytes) pour {}", total, id);
+                return Some((res.0, res.1, total));
+            }
+            server_log!("[download] audio URL via watch page probe KO, fallback pour {}", id);
+        }
+    }
+    if !tor {
+        if let Ok(data) = innertube_request(client, key, "player", serde_json::json!({ "videoId": id })).await {
+            let status = data.get("playabilityStatus").and_then(|s| s.get("status")).and_then(|v| v.as_str()).unwrap_or("unknown");
+            if status == "OK" {
+                if let Some(res) = pick_audio_format(&data, client, state).await {
+                    if let Some(total) = probe_audio_url(client, &res.0).await {
+                        server_log!("[download] audio URL via WEB (probe OK, {} bytes) pour {}", total, id);
+                        return Some((res.0, res.1, total));
+                    }
+                    server_log!("[download] audio URL via WEB probe KO pour {}", id);
+                }
+            }
+        }
+    }
+    None
+}
+
+async fn pick_video_format(
+    data: &serde_json::Value,
+    client: &reqwest::Client,
+    state: &ServerState,
+) -> Option<(String, String)> {
+    let streaming = data.get("streamingData")?;
+    let mut formats: Vec<serde_json::Value> = Vec::new();
+    if let Some(f) = streaming.get("formats").and_then(|v| v.as_array()) {
+        formats.extend(f.iter().cloned());
+    }
+    if let Some(f) = streaming.get("adaptiveFormats").and_then(|v| v.as_array()) {
+        formats.extend(f.iter().cloned());
+    }
+    let has_audio = |f: &serde_json::Value| -> bool {
+        f.get("audioQuality").is_some()
+            || f.get("audioCodec").is_some()
+            || f.get("mimeType")
+                .and_then(|m| m.as_str())
+                .map(|m| m.contains("audio"))
+                .unwrap_or(false)
+    };
+    let mut candidates: Vec<_> = formats
+        .iter()
+        .filter(|f| f.get("url").is_some() || f.get("signatureCipher").is_some() || f.get("cipher").is_some())
+        .filter(|f| {
+            let mt = f.get("mimeType").and_then(|m| m.as_str()).unwrap_or("");
+            mt.trim_start().starts_with("video/") && has_audio(f)
+        })
+        .cloned()
+        .collect();
+    if candidates.is_empty() {
+        return None;
+    }
+    candidates.sort_by(|a, b| {
+        let am4a = a.get("mimeType").and_then(|m| m.as_str()).map(|m| m.contains("mp4")).unwrap_or(false);
+        let bm4a = b.get("mimeType").and_then(|m| m.as_str()).map(|m| m.contains("mp4")).unwrap_or(false);
+        let ah = a.get("height").and_then(|h| h.as_u64()).unwrap_or(0);
+        let bh = b.get("height").and_then(|h| h.as_u64()).unwrap_or(0);
+        let aok = ah > 0 && ah <= 720;
+        let bok = bh > 0 && bh <= 720;
+        bm4a.cmp(&am4a)
+            .then(bok.cmp(&aok))
+            .then(bh.cmp(&ah))
+            .then(
+                b.get("bitrate").and_then(|x| x.as_u64()).unwrap_or(0)
+                    .cmp(&a.get("bitrate").and_then(|x| x.as_u64()).unwrap_or(0)),
+            )
+    });
+    let fmt = &candidates[0];
+    let mt = fmt.get("mimeType").and_then(|m| m.as_str()).unwrap_or("");
+    let itag = fmt.get("itag").and_then(|x| x.as_u64()).unwrap_or(0);
+    let bitrate = fmt.get("bitrate").and_then(|x| x.as_u64()).unwrap_or(0);
+    server_log!("[video] picked itag={} mime={} bitrate={} height={} candidates={}", itag, mt, bitrate, fmt.get("height").and_then(|h| h.as_u64()).unwrap_or(0), candidates.len());
+    let url = decipher_format_url(fmt, client, state).await?;
+    server_log!("[video] URL (trunc 160): {}", url.chars().take(160).collect::<String>());
+    Some((url, ext_from_mime(mt)))
+}
+
+async fn resolve_video_url(state: &ServerState, id: &str) -> Option<(String, String)> {
+    let client = &state.client;
+    let key = state.innertube_key.as_deref().unwrap_or("AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8");
+    let tor = *state.tor_enabled.read().await;
+    if !tor {
+        if let Ok(data) = innertube_android_request(client, "player", key, serde_json::json!({ "videoId": id })).await {
+            let status = data.get("playabilityStatus").and_then(|s| s.get("status")).and_then(|v| v.as_str()).unwrap_or("unknown");
+            server_log!("[download] Android status {} pour {}", status, id);
+            if status == "OK" {
+                if let Some(res) = pick_video_format(&data, client, state).await {
+                    server_log!("[download] video URL via Android pour {}", id);
+                    return Some(res);
+                }
+            }
+        }
+    }
+    if let Ok(data) = watch_page_stream(client, id).await {
+        if let Some(res) = pick_video_format(&data, client, state).await {
+            server_log!("[download] video URL via watch page pour {}", id);
+            return Some(res);
+        }
+    }
+    if !tor {
+        if let Ok(data) = innertube_request(client, key, "player", serde_json::json!({ "videoId": id })).await {
+            let status = data.get("playabilityStatus").and_then(|s| s.get("status")).and_then(|v| v.as_str()).unwrap_or("unknown");
+            if status == "OK" {
+                if let Some(res) = pick_video_format(&data, client, state).await {
+                    server_log!("[download] video URL via WEB pour {}", id);
+                    return Some(res);
+                }
+            }
+        }
+    }
+    None
+}
+
 async fn proxy_youtube_stream(
     client: &reqwest::Client,
     url: &str,
@@ -1427,7 +1730,7 @@ async fn innertube_tv_embedded_request(
         .body(body.to_string())
         .send()
         .await
-        .map_err(|e| format!("InnerTube TV embedded request failed: {}", e))?;
+        .map_err(|e| format!("InnerTube TV embedded request failed: {}", err_chain(&e)))?;
     if !resp.status().is_success() {
         let status_code = resp.status().as_u16();
         let body_text = resp.text().await.unwrap_or_default();
@@ -1542,17 +1845,14 @@ fn ffmpeg_path(state: &ServerState) -> String {
         .resource_dir
         .as_ref()
         .map(|d| {
-            let p = d.join("ffmpeg.exe");
-            if p.exists() {
-                p.to_string_lossy().to_string()
-            } else {
-                let p = d.join("ffmpeg");
+            let candidates = ["ffmpeg.exe", "ffmpeg", "libffmpeg.so"];
+            for c in candidates {
+                let p = d.join(c);
                 if p.exists() {
-                    p.to_string_lossy().to_string()
-                } else {
-                    "ffmpeg".into()
+                    return p.to_string_lossy().to_string();
                 }
             }
+            "ffmpeg".into()
         })
         .unwrap_or_else(|| "ffmpeg".into())
 }
@@ -2039,48 +2339,207 @@ async fn handle_download(
             }
         }
     } else {
-        let ext = if fmt == "video" { "mp4" } else { "webm" };
-        let final_path = target_dir.join(format!("{}.{}", safe_title, ext));
+        if fmt != "video" {
+            return download_audio_with_ffmpeg(&state, &body, &target_dir, &safe_title, &status_key, origin).await;
+        }
+        use std::io::Write;
 
-        match resolve_stream_url(&state, &body.video_id).await {
-            Some(stream_url) => {
-                state.progress_map.write().await.insert(status_key.clone(), 20.0);
-                match state.client.get(&stream_url)
-                    .header("User-Agent", UA)
-                    .header("Referer", "https://www.youtube.com/")
-                    .send()
-                    .await
-                {
-                    Ok(resp) if resp.status().is_success() => {
-                        match resp.bytes().await {
-                            Ok(bytes) => {
-                                match fs::write(&final_path, &bytes) {
-                                    Ok(_) => {
-                                        state.progress_map.write().await.insert(status_key, 100.0);
-                                        json_response(serde_json::json!({"success": true, "path": final_path.to_string_lossy()}), StatusCode::OK, origin)
-                                    }
-                                    Err(e) => {
-                                        state.progress_map.write().await.remove(&status_key);
-                                        json_response(serde_json::json!({"success": false, "error": format!("Erreur d'écriture du fichier: {}", e)}), StatusCode::INTERNAL_SERVER_ERROR, origin)
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                state.progress_map.write().await.remove(&status_key);
-                                json_response(serde_json::json!({"success": false, "error": format!("Erreur de téléchargement: {}", e)}), StatusCode::INTERNAL_SERVER_ERROR, origin)
-                            }
-                        }
-                    }
-                    _ => {
-                        state.progress_map.write().await.remove(&status_key);
-                        json_response(serde_json::json!({"success": false, "error": "Erreur de téléchargement"}), StatusCode::INTERNAL_SERVER_ERROR, origin)
-                    }
-                }
-            }
+        let (stream_url, ext) = match resolve_video_url(&state, &body.video_id).await {
+            Some((url, ext)) => (url, ext),
             None => {
                 state.progress_map.write().await.remove(&status_key);
-                json_response(serde_json::json!({"success": false, "error": "Aucun flux disponible pour le téléchargement"}), StatusCode::BAD_GATEWAY, origin)
+                return json_response(serde_json::json!({"success": false, "error": "Aucun flux vidéo disponible pour le téléchargement"}), StatusCode::BAD_GATEWAY, origin);
             }
+        };
+        let final_path = target_dir.join(format!("{}.{}", safe_title, ext));
+        state.progress_map.write().await.insert(status_key.clone(), 20.0);
+
+        let mut file = match std::fs::File::create(&final_path) {
+            Ok(f) => f,
+            Err(e) => {
+                state.progress_map.write().await.remove(&status_key);
+                return json_response(serde_json::json!({"success": false, "error": format!("Erreur d'écriture du fichier: {}", e)}), StatusCode::INTERNAL_SERVER_ERROR, origin);
+            }
+        };
+        let mut downloaded: u64 = 0;
+        let mut last_pct: u32 = 0;
+        server_log!("[download] req open-range vidéo pour {}", body.video_id);
+        let resp = state.client
+            .get(&stream_url)
+            .header("User-Agent", UA)
+            .header("Referer", "https://www.youtube.com/")
+            .header("Origin", "https://www.youtube.com")
+            .header("Range", "bytes=0-")
+            .send()
+            .await;
+        let mut response = match resp {
+            Ok(r) if r.status().is_success() => r,
+            Ok(r) => {
+                server_log!("[download] HTTP {} pour {} (url: {})", r.status(), body.video_id, stream_url);
+                let _ = std::fs::remove_file(&final_path);
+                state.progress_map.write().await.remove(&status_key);
+                return json_response(serde_json::json!({"success": false, "error": format!("Erreur de téléchargement (HTTP {})", r.status())}), StatusCode::INTERNAL_SERVER_ERROR, origin);
+            }
+            Err(e) => {
+                server_log!("[download] échec requête pour {}: {}", body.video_id, e);
+                let _ = std::fs::remove_file(&final_path);
+                state.progress_map.write().await.remove(&status_key);
+                return json_response(serde_json::json!({"success": false, "error": format!("Erreur de téléchargement: {}", e)}), StatusCode::INTERNAL_SERVER_ERROR, origin);
+            }
+        };
+        loop {
+            match response.chunk().await {
+                Ok(Some(chunk)) => {
+                    if let Err(e) = file.write_all(&chunk) {
+                        let _ = std::fs::remove_file(&final_path);
+                        server_log!("[download] erreur écriture {}: {}", body.video_id, e);
+                        state.progress_map.write().await.remove(&status_key);
+                        return json_response(serde_json::json!({"success": false, "error": format!("Erreur d'écriture du fichier: {}", e)}), StatusCode::INTERNAL_SERVER_ERROR, origin);
+                    }
+                    downloaded += chunk.len() as u64;
+                    let pct = (20.0 + (downloaded as f64 / 60_000_000.0) * 80.0).min(100.0) as u32;
+                    if pct != last_pct {
+                        last_pct = pct;
+                        state.progress_map.write().await.insert(status_key.clone(), pct as f64);
+                    }
+                }
+                Ok(None) => break,
+                Err(e) => {
+                    let _ = std::fs::remove_file(&final_path);
+                    server_log!("[download] échec flux {}: {}", body.video_id, e);
+                    state.progress_map.write().await.remove(&status_key);
+                    return json_response(serde_json::json!({"success": false, "error": format!("Erreur de téléchargement: {}", e)}), StatusCode::INTERNAL_SERVER_ERROR, origin);
+                }
+            }
+        }
+        state.progress_map.write().await.insert(status_key, 100.0);
+        json_response(serde_json::json!({"success": true, "path": final_path.to_string_lossy()}), StatusCode::OK, origin)
+    }
+}
+
+async fn download_audio_with_ffmpeg(
+    state: &ServerState,
+    body: &DownloadBody,
+    target_dir: &std::path::Path,
+    safe_title: &str,
+    status_key: &str,
+    origin: Option<&str>,
+) -> Response {
+    use std::io::Write;
+
+    let temp_path = target_dir.join(format!(".tmp_{}.mp4", body.video_id));
+    let final_path = target_dir.join(format!("{}.mp3", safe_title));
+
+    let (url, _ext) = match resolve_video_url(state, &body.video_id).await {
+        Some(u) => u,
+        None => {
+            state.progress_map.write().await.remove(status_key);
+            return json_response(serde_json::json!({"success": false, "error": "Aucun flux audio disponible pour le téléchargement"}), StatusCode::BAD_GATEWAY, origin);
+        }
+    };
+    state.progress_map.write().await.insert(status_key.to_string(), 8.0);
+
+    let mut file = match std::fs::File::create(&temp_path) {
+        Ok(f) => f,
+        Err(e) => {
+            state.progress_map.write().await.remove(status_key);
+            return json_response(serde_json::json!({"success": false, "error": format!("Erreur d'écriture du fichier: {}", e)}), StatusCode::INTERNAL_SERVER_ERROR, origin);
+        }
+    };
+
+    server_log!("[audio-ffmpeg] téléchargement MP4 combiné pour {}", body.video_id);
+    let resp = state.client
+        .get(&url)
+        .header("User-Agent", UA)
+        .header("Referer", "https://www.youtube.com/")
+        .header("Origin", "https://www.youtube.com")
+        .header("Range", "bytes=0-")
+        .send()
+        .await;
+    let mut response = match resp {
+        Ok(r) if r.status().is_success() => r,
+        Ok(r) => {
+            server_log!("[audio-ffmpeg] HTTP {} pour {} (url: {})", r.status(), body.video_id, url);
+            let _ = std::fs::remove_file(&temp_path);
+            state.progress_map.write().await.remove(status_key);
+            return json_response(serde_json::json!({"success": false, "error": format!("Erreur de téléchargement (HTTP {})", r.status())}), StatusCode::INTERNAL_SERVER_ERROR, origin);
+        }
+        Err(e) => {
+            server_log!("[audio-ffmpeg] échec requête pour {}: {}", body.video_id, e);
+            let _ = std::fs::remove_file(&temp_path);
+            state.progress_map.write().await.remove(status_key);
+            return json_response(serde_json::json!({"success": false, "error": format!("Erreur de téléchargement: {}", e)}), StatusCode::INTERNAL_SERVER_ERROR, origin);
+        }
+    };
+    let mut downloaded: u64 = 0;
+    let mut last_pct: u32 = 0;
+    loop {
+        match response.chunk().await {
+            Ok(Some(chunk)) => {
+                if let Err(e) = file.write_all(&chunk) {
+                    let _ = std::fs::remove_file(&temp_path);
+                    server_log!("[audio-ffmpeg] erreur écriture {}: {}", body.video_id, e);
+                    state.progress_map.write().await.remove(status_key);
+                    return json_response(serde_json::json!({"success": false, "error": format!("Erreur d'écriture du fichier: {}", e)}), StatusCode::INTERNAL_SERVER_ERROR, origin);
+                }
+                downloaded += chunk.len() as u64;
+                let pct = (8.0 + (downloaded as f64 / 40_000_000.0) * 82.0).min(90.0) as u32;
+                if pct != last_pct {
+                    last_pct = pct;
+                    state.progress_map.write().await.insert(status_key.to_string(), pct as f64);
+                }
+            }
+            Ok(None) => break,
+            Err(e) => {
+                let _ = std::fs::remove_file(&temp_path);
+                server_log!("[audio-ffmpeg] échec flux {}: {}", body.video_id, e);
+                state.progress_map.write().await.remove(status_key);
+                return json_response(serde_json::json!({"success": false, "error": format!("Erreur de téléchargement: {}", e)}), StatusCode::INTERNAL_SERVER_ERROR, origin);
+            }
+        }
+    }
+    drop(file);
+    state.progress_map.write().await.insert(status_key.to_string(), 90.0);
+
+    let ffmpeg = ffmpeg_path(state);
+    server_log!("[audio-ffmpeg] conversion avec {} pour {}", ffmpeg, body.video_id);
+    let mut cmd = new_cmd(&ffmpeg);
+    let args: Vec<String> = vec![
+        "-y".into(),
+        "-loglevel".into(), "error".into(),
+        "-i".into(), temp_path.to_string_lossy().to_string(),
+        "-vn".into(), "-acodec".into(), "libmp3lame".into(), "-q:a".into(), "2".into(),
+        final_path.to_string_lossy().to_string(),
+    ];
+    cmd.args(args);
+    #[cfg(target_os = "android")]
+    {
+        if let Some(dir) = std::path::Path::new(&ffmpeg).parent() {
+            let ld = dir.to_string_lossy().to_string();
+            cmd.env("LD_LIBRARY_PATH", ld);
+        }
+    }
+    let conv = cmd.output().await;
+    let _ = std::fs::remove_file(&temp_path);
+    match conv {
+        Ok(o) if o.status.success() => {
+            state.progress_map.write().await.insert(status_key.to_string(), 100.0);
+            json_response(serde_json::json!({"success": true, "path": final_path.to_string_lossy()}), StatusCode::OK, origin)
+        }
+        _ => {
+            let err = match conv {
+                Ok(o) => {
+                    let code = o.status.code().map(|c| c.to_string()).unwrap_or_else(|| "?".into());
+                    let stdout = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                    let stderr = String::from_utf8_lossy(&o.stderr).trim().to_string();
+                    format!("ffmpeg exit={} stdout={} stderr={}", code, stdout, stderr)
+                }
+                Err(e) => format!("ffmpeg spawn: {}", e),
+            };
+            let _ = std::fs::remove_file(&final_path);
+            state.progress_map.write().await.remove(status_key);
+            server_log!("[audio-ffmpeg] conversion KO: {}", err);
+            json_response(serde_json::json!({"success": false, "error": err}), StatusCode::INTERNAL_SERVER_ERROR, origin)
         }
     }
 }
@@ -2481,6 +2940,190 @@ async fn handle_ping(
     )
 }
 
+async fn debug_fetch_range(client: &reqwest::Client, url: &str, range: &str, cap: u64) -> (String, u64, u64) {
+    let resp = client
+        .get(url)
+        .header("User-Agent", UA)
+        .header("Referer", "https://www.youtube.com/")
+        .header("Origin", "https://www.youtube.com")
+        .header("Range", range)
+        .send()
+        .await;
+    let mut resp = match resp {
+        Ok(r) => r,
+        Err(e) => return (format!("req_err:{}", e), 0, 0),
+    };
+    let status = resp.status().as_u16().to_string();
+    let mut got: u64 = 0;
+    while let Ok(Some(chunk)) = resp.chunk().await {
+        got += chunk.len() as u64;
+        if got >= cap {
+            break;
+        }
+    }
+    let cr = resp
+        .headers()
+        .get("content-range")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("").to_string();
+    (status, got, cr.split('/').last().and_then(|s| s.trim().parse::<u64>().ok()).unwrap_or(0))
+}
+
+async fn handle_debug_ffmpeg(
+    State(state): State<ServerState>,
+    headers: HeaderMap,
+) -> Response {
+    let origin = headers.get("origin").and_then(|v| v.to_str().ok());
+    let mut results = serde_json::json!({});
+
+    let ffmpeg = ffmpeg_path(&state);
+    results["ffmpeg_path"] = serde_json::json!(ffmpeg);
+
+    #[cfg(target_os = "android")]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let p = std::path::Path::new(&ffmpeg);
+        if let Ok(md) = std::fs::metadata(p) {
+            results["mode"] = serde_json::json!(format!("{:o}", md.permissions().mode()));
+            results["len"] = serde_json::json!(md.len());
+        } else {
+            results["mode"] = serde_json::json!("metadata KO");
+        }
+
+        let mounts = std::fs::read_to_string("/proc/mounts").unwrap_or_default();
+        let data_line = mounts.lines().find(|l| l.starts_with("/dev/block/") && l.contains(" /data ")).unwrap_or("");
+        results["data_mount"] = serde_json::json!(data_line);
+
+        let mut spawn_ok = Vec::new();
+        let r1 = tokio::process::Command::new("/system/bin/toybox").arg("id").output().await;
+        spawn_ok.push(serde_json::json!({"cmd": "toybox id", "ok": r1.is_ok(), "err": r1.err().map(|e| e.to_string())}));
+
+        let chmod = tokio::process::Command::new("/system/bin/chmod").arg("755").arg(&ffmpeg).output().await;
+        spawn_ok.push(serde_json::json!({"cmd": "chmod 755", "ok": chmod.is_ok(), "out": chmod.as_ref().ok().map(|o| String::from_utf8_lossy(&o.stderr).to_string())}));
+
+        let mut cmd = tokio::process::Command::new(&ffmpeg);
+        cmd.arg("-version");
+        if let Some(dir) = std::path::Path::new(&ffmpeg).parent() {
+            cmd.env("LD_LIBRARY_PATH", dir);
+        }
+        let r2 = cmd.output().await;
+        spawn_ok.push(serde_json::json!({"cmd": "ffmpeg -version", "ok": r2.is_ok(), "err": r2.as_ref().err().map(|e| e.to_string()), "out": r2.as_ref().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string().chars().take(80).collect::<String>())}));
+
+        let r3 = tokio::process::Command::new("/system/bin/sh").arg("-c").arg("echo hello").output().await;
+        spawn_ok.push(serde_json::json!({"cmd": "sh -c echo", "ok": r3.is_ok(), "err": r3.err().map(|e| e.to_string())}));
+
+        results["spawn"] = serde_json::json!(spawn_ok);
+    }
+
+    json_response(results, StatusCode::OK, origin)
+}
+
+async fn handle_debug_audio(
+    State(state): State<ServerState>,
+    Query(params): Query<DelayParams>,
+    headers: HeaderMap,
+) -> Response {
+    let origin = headers.get("origin").and_then(|v| v.to_str().ok());
+    let id = match params.id {
+        Some(id) if is_valid_video_id(&id) => id,
+        _ => return json_response(serde_json::json!({"error": "videoId invalide"}), StatusCode::BAD_REQUEST, origin),
+    };
+    let delay = params.delay.unwrap_or(0);
+    let client = &state.client;
+    server_log!("[debug-audio] Testing audio ranges for {}", id);
+
+    let key = state.innertube_key.as_deref().unwrap_or("AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8");
+    let url = (|| async {
+        if let Ok(data) = innertube_android_request(client, "player", key, serde_json::json!({ "videoId": id })).await {
+            if data.get("playabilityStatus").and_then(|s| s.get("status")).and_then(|v| v.as_str()).unwrap_or("") == "OK" {
+                if let Some(res) = pick_audio_format(&data, client, &state).await {
+                    return Some(res.0);
+                }
+            }
+        }
+        None
+    })().await;
+
+    let mut results = serde_json::json!({"id": id});
+    let url = match url {
+        Some(u) => u,
+        None => {
+            results["error"] = serde_json::json!("no audio url");
+            return json_response(results, StatusCode::OK, origin);
+        }
+    };
+    results["host"] = serde_json::json!(url.split('/').nth(2).unwrap_or(""));
+    results["total"] = serde_json::json!(0);
+
+    let (s, g, cr) = debug_fetch_range(client, &url, "bytes=0-262143", 1_000_000).await;
+    results["r_256k"] = serde_json::json!({"status": s, "got": g, "cr_total": cr});
+    let total = cr;
+
+    if total > 0 {
+        results["total"] = serde_json::json!(total);
+        let (s, g, _) = debug_fetch_range(client, &url, &format!("bytes=0-{}", total - 1), 1_500_000).await;
+        results["r_full_bounded"] = serde_json::json!({"status": s, "got": g});
+    }
+    let (s, g, _) = debug_fetch_range(client, &url, "bytes=0-", 1_500_000).await;
+    results["r_open"] = serde_json::json!({"status": s, "got": g});
+
+    let mut chunks: Vec<serde_json::Value> = Vec::new();
+    let mut start: u64 = 0;
+    let mut ok_count = 0;
+    loop {
+        let end = start + 255999;
+        let (s, g, cr) = debug_fetch_range(client, &url, &format!("bytes={}-{}", start, end), 1_000_000).await;
+        chunks.push(serde_json::json!({"start": start, "status": s, "got": g, "cr_total": cr}));
+        if s.starts_with("2") {
+            ok_count += 1;
+            start += 256000;
+            if ok_count >= 8 || (total > 0 && start >= total) {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+    results["chunks_256k"] = serde_json::json!(chunks);
+    results["chunks_ok"] = serde_json::json!(ok_count);
+
+    if ok_count > 0 && ok_count < 8 {
+        if let Ok(data) = innertube_android_request(client, "player", key, serde_json::json!({ "videoId": id })).await {
+            if data.get("playabilityStatus").and_then(|s| s.get("status")).and_then(|v| v.as_str()).unwrap_or("") == "OK" {
+                if let Some(res) = pick_audio_format(&data, client, &state).await {
+                    let fresh = res.0;
+                    let (s, g, _) = debug_fetch_range(client, &fresh, "bytes=0-255999", 1_000_000).await;
+                    results["fresh_url_after_cap"] = serde_json::json!({"status": s, "got": g, "host": fresh.split('/').nth(2).unwrap_or("")});
+                }
+            }
+        }
+    }
+
+    if delay > 0 && ok_count > 0 {
+        server_log!("[debug-audio] sleeping {}s before retry at high offset", delay);
+        sleep(Duration::from_secs(delay)).await;
+        let start = ok_count as u64 * 256_000;
+        let mut arr: Vec<serde_json::Value> = Vec::new();
+        for attempt in 1..=2 {
+            let (u, _e, _t) = match resolve_audio_url(&state, &id).await {
+                Some(x) => x,
+                None => break,
+            };
+            let range = format!("bytes={}-{}", start, start + 255999);
+            let (s, g, _) = debug_fetch_range(client, &u, &range, 1_000_000).await;
+            arr.push(serde_json::json!({"attempt": attempt, "offset": start, "status": s, "got": g}));
+            if s.starts_with("2") {
+                break;
+            }
+            sleep(Duration::from_secs(5)).await;
+        }
+        results["after_delay"] = serde_json::json!(arr);
+    }
+
+    server_log!("[debug-audio] done for {}", id);
+    json_response(results, StatusCode::OK, origin)
+}
+
 async fn handle_debug_stream(
     State(state): State<ServerState>,
     Query(params): Query<IdParams>,
@@ -2604,6 +3247,8 @@ pub async fn start_server(output_dir: PathBuf, resource_dir: Option<PathBuf>) {
         .route("/user-dirs", get(handle_user_dirs))
         .route("/ping", get(handle_ping))
         .route("/debug-stream", get(handle_debug_stream))
+        .route("/debug-audio", get(handle_debug_audio))
+        .route("/debug-ffmpeg", get(handle_debug_ffmpeg))
         .route("/request-permissions", get(handle_request_permissions))
         .with_state(state);
 

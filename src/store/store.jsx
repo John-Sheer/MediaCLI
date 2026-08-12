@@ -6,7 +6,6 @@ const initialState = {
   homeTab: "streaming",
   aboutOpen: false,
   vpnModal: null,
-  vpnPrompted: false,
   playerFullscreen: false,
   error: null,
 

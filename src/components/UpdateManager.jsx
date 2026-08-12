@@ -23,6 +23,9 @@ const compareVersions = (a, b) => {
 export default function UpdateManager() {
   const [updateInfo, setUpdateInfo] = useState(null);
   const [downloading, setDownloading] = useState(false);
+  const [downloaded, setDownloaded] = useState(false);
+  const [installing, setInstalling] = useState(false);
+  const [downloadedPath, setDownloadedPath] = useState(null);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState(null);
   const [dismissed, setDismissed] = useState(false);
@@ -73,30 +76,48 @@ export default function UpdateManager() {
         setProgress(typeof event.payload === "number" ? event.payload : 0);
       });
       const path = await invoke("download_apk", { url: updateInfo.url });
-      let can = await invoke("can_install_apk");
-      if (!can) {
-        await invoke("request_install_permission");
-        can = await invoke("can_install_apk");
-        if (!can) {
-          setError("Activez « Installer des applications inconnues » dans les paramètres puis réessayez.");
-          return;
-        }
-      }
-      await invoke("install_apk", { path });
-      setUpdateInfo(null);
-      setDismissed(true);
+      setDownloadedPath(path);
+      setProgress(100);
+      setDownloaded(true);
     } catch (e) {
-      console.error("[updater] android install failed:", e);
-      setError("Échec de l'installation de la mise à jour. Réessayez.");
+      console.error("[updater] android download failed:", e);
+      const msg =
+        typeof e === "string" ? e : e?.message || JSON.stringify(e);
+      setError(`Échec du téléchargement : ${msg}`);
     } finally {
       if (unlisten) unlisten();
       setDownloading(false);
     }
   };
 
+  const handleInstall = async () => {
+    setInstalling(true);
+    setError(null);
+    try {
+      let can = await invoke("can_install_apk");
+      if (!can) {
+        await invoke("request_install_permission");
+        setError(
+          "Autorisez « Installer des applications inconnues » dans les paramètres, puis retouchez Installer."
+        );
+        return;
+      }
+      await invoke("install_apk", { path: downloadedPath });
+      setError("Suivez l'installation à l'écran système, puis revenez ici.");
+    } catch (e) {
+      console.error("[updater] android install failed:", e);
+      const msg =
+        typeof e === "string" ? e : e?.message || JSON.stringify(e);
+      setError(`Échec de l'installation : ${msg}`);
+    } finally {
+      setInstalling(false);
+    }
+  };
+
   const handleDownload = async () => {
     if (!updateInfo) return;
     setDownloading(true);
+    setDownloaded(false);
     setProgress(0);
     setError(null);
     if (IS_ANDROID) {
@@ -174,18 +195,31 @@ export default function UpdateManager() {
           </div>
         )}
 
+        {downloaded && !downloading && (
+          <p className="mt-3 text-xs text-emerald-400 text-center font-medium">
+            MAJ v{updateInfo.version} téléchargée. Touchez « Installer » pour
+            continuer.
+          </p>
+        )}
+
         {error && (
           <p className="mt-2 text-[10px] text-red-400 text-center">{error}</p>
         )}
 
         <div className="flex gap-2 mt-3">
           <button
-            onClick={handleDownload}
-            disabled={downloading}
+            onClick={downloaded ? handleInstall : handleDownload}
+            disabled={downloading || installing}
             className="flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium transition-colors"
           >
             <Download size={13} />
-            {downloading ? "Installation..." : "Mettre à jour"}
+            {downloading
+              ? IS_ANDROID
+                ? "Téléchargement de l'APK..."
+                : "Téléchargement..."
+              : downloaded
+                ? "Installer"
+                : "Mettre à jour"}
           </button>
           <button
             onClick={handleDismiss}

@@ -44,9 +44,9 @@ if (Test-Path $srcLib) {
 
 Write-Output "[4/6] Sync portable..."
 $releaseDir = Join-Path $root "src-tauri\target\release"
-$exe = Get-ChildItem -LiteralPath $releaseDir -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "*diaCLI.exe" -and -not $_.PSIsContainer } | Select-Object -First 1
+$exe = Get-ChildItem -LiteralPath $releaseDir -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "*CLI.exe" -and -not $_.PSIsContainer } | Select-Object -First 1
 if ($exe) {
-  $dest = Join-Path $env:USERPROFILE "Desktop\MediaCLI_Portable\MédiaCLI.exe"
+  $dest = Join-Path $env:USERPROFILE "Desktop\mediaCLI\Portable\MediaCLI.exe"
   # IMPORTANT: Copy-Item PowerShell echoue silencieusement avec le nom accentue "MédiaCLI.exe".
   # On passe par cmd /c copy qui gere l'encodage correctement.
   & cmd /c "copy /Y `"$($exe.FullName)`" `"$dest`" > NUL 2>&1"
@@ -73,6 +73,9 @@ $keyPath = Join-Path $env:USERPROFILE ".tauri\mediacli.key"
 $passFile = Join-Path $env:USERPROFILE ".tauri\mediacli.key.pass"
 if ((Test-Path $keyPath) -and (Test-Path $passFile)) {
   $pass = (Get-Content -Raw $passFile).Trim()
+  # le signer lit TAURI_SIGNING_PRIVATE_KEY depuis l'env sinon; on l'efface pour eviter le conflit avec --private-key-path
+  Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY -ErrorAction SilentlyContinue
+  Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD -ErrorAction SilentlyContinue
   npx --no-install @tauri-apps/cli signer sign --private-key-path $keyPath --password $pass "$($setup.FullName)"
   if ($LASTEXITCODE -ne 0) { Write-Output "ECHEC signature"; Pop-Location; exit 1 }
 } else {

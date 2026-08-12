@@ -71,14 +71,10 @@
       --acc:var(--red);
       position:relative;display:flex;flex-direction:column;
       padding:20px 18px;border-radius:8px;
-      background:rgba(255,255,255,.05);
-      border:1px solid rgba(255,59,92,.15);
+      background:var(--surface);
+      border:1px solid rgba(200,30,58,.25);
       transition:transform .3s ease,border-color .3s ease,box-shadow .3s ease;
       overflow:hidden;
-    }
-    .dl-card::before{
-      content:'';position:absolute;top:0;left:0;right:0;height:1px;
-      background:rgba(255,255,255,.08);
     }
     .dl-card:hover{
       transform:translateY(-4px);
@@ -270,7 +266,7 @@
   <div class="hero">
     <div class="brand-row">
       <div class="logo">
-        <svg viewBox="34 27 64 97">
+        <svg viewBox="36 30 60 92" preserveAspectRatio="xMidYMid meet">
           <g>
             <path d="M66,30 C75,37 86,41 96,43 C96,43 96,68 96,82 C96,102 84,116 66,122 C48,116 36,102 36,82 C36,68 36,43 36,43 C46,41 57,37 66,30 Z" fill="#c81e3a"/>
             <circle cx="66" cy="76" r="24" fill="none" stroke="#fff" stroke-width="3"/>
@@ -306,7 +302,7 @@
             <span class="dl-size" id="apkSizeTxt">~26 Mo</span>
             <span class="dl-file">MediaCLI.apk</span>
           </div>
-          <a href="https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.10/MediaCLI.apk" download="MediaCLI.apk" class="dl-cta" id="dlAndroid" onclick="dlFeedback(this,'APK',event)">Télécharger <span class="dl-arrow"><svg fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M12 3v10"/><path d="M5 10l7 7 7-7"/><path d="M4 21h16"/></svg></span></a>
+          <a href="https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.11/MediaCLI.apk" download="MediaCLI.apk" class="dl-cta" id="dlAndroid" onclick="dlFeedback(this,'APK',event)">Télécharger <span class="dl-arrow"><svg fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M12 3v10"/><path d="M5 10l7 7 7-7"/><path d="M4 21h16"/></svg></span></a>
         </div>
 
         <div class="dl-card">
@@ -323,7 +319,7 @@
             <span class="dl-size" id="exeSizeTxt">~52 Mo</span>
             <span class="dl-file">MediaCLI-Setup.exe</span>
           </div>
-          <a href="https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.10/MediaCLI-Setup.exe" class="dl-cta" id="dlWindows" onclick="dlFeedback(this,'Windows',event)">Télécharger <span class="dl-arrow"><svg fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M12 3v10"/><path d="M5 10l7 7 7-7"/><path d="M4 21h16"/></svg></span></a>
+          <a href="https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.11/MediaCLI-Setup.exe" class="dl-cta" id="dlWindows" onclick="dlFeedback(this,'Windows',event)">Télécharger <span class="dl-arrow"><svg fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M12 3v10"/><path d="M5 10l7 7 7-7"/><path d="M4 21h16"/></svg></span></a>
         </div>
 
         <div class="dl-card">
@@ -340,7 +336,7 @@
             <span class="dl-size" id="zipSizeTxt">~60 Mo</span>
             <span class="dl-file">MediaCLI-Portable.zip</span>
           </div>
-          <a href="https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.10/MediaCLI-Portable.zip" class="dl-cta" id="dlPortable" onclick="dlFeedback(this,'Portable',event)">Télécharger <span class="dl-arrow"><svg fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M12 3v10"/><path d="M5 10l7 7 7-7"/><path d="M4 21h16"/></svg></span></a>
+          <a href="https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.11/MediaCLI-Portable.zip" class="dl-cta" id="dlPortable" onclick="dlFeedback(this,'Portable',event)">Télécharger <span class="dl-arrow"><svg fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M12 3v10"/><path d="M5 10l7 7 7-7"/><path d="M4 21h16"/></svg></span></a>
         </div>
       </div>
     </div>
@@ -404,12 +400,8 @@
   <div class="changelog">
     <p class="sec-label">Nouveautés</p>
     <div class="cl-item">
-      <div class="cl-date">v0.1.10 — Août 2026</div>
-      <div class="cl-notes">Recherche corrigée (résultats affichés sur Android), scan des dossiers locaux complet et correctifs de stabilité.</div>
-    </div>
-    <div class="cl-item">
-      <div class="cl-date">v0.1.9 — Août 2026</div>
-      <div class="cl-notes">Mises à jour automatiques directement depuis l'application (Windows & Android), corrections de stabilité et améliorations générales.</div>
+      <div class="cl-date">v0.1.11 — Août 2026</div>
+      <div class="cl-notes">Correctif critique Android : crash TLS au téléchargement de l'APK corrigé. Mise à jour in-app fonctionnelle de bout en bout (téléchargement, autorisation et installation).</div>
     </div>
     <button class="cl-more" id="clMore" aria-expanded="false" aria-controls="clOlder">
       <span class="cl-more-core">
@@ -420,6 +412,14 @@
       </span>
     </button>
     <div class="cl-older" id="clOlder">
+    <div class="cl-item">
+      <div class="cl-date">v0.1.10 — Août 2026</div>
+      <div class="cl-notes">Recherche corrigée (résultats affichés sur Android), scan des dossiers locaux complet et correctifs de stabilité.</div>
+    </div>
+    <div class="cl-item">
+      <div class="cl-date">v0.1.9 — Août 2026</div>
+      <div class="cl-notes">Mises à jour automatiques directement depuis l'application (Windows & Android), corrections de stabilité et améliorations générales.</div>
+    </div>
     <div class="cl-item">
       <div class="cl-date">v0.1.8 — Août 2026</div>
       <div class="cl-notes">Scan musique/vidéos locales amélioré sur Android (permissions + accès Tous les fichiers), demande des permissions média au lancement, recherche et streaming YouTube plus fiables, améliorations du lecteur et de l'interface, version portable Windows disponible.</div>
@@ -512,6 +512,18 @@
       if (sizes.exe) document.getElementById('exeSizeTxt').textContent = formatBytes(sizes.exe);
       if (sizes.zip) document.getElementById('zipSizeTxt').textContent = formatBytes(sizes.zip);
     }).catch(() => {});
+
+    (function() {
+      var changelog = document.querySelector('.changelog');
+      var older = document.getElementById('clOlder');
+      if (!changelog || !older) return;
+      var visible = Array.prototype.filter.call(changelog.children, function(el) {
+        return el.classList.contains('cl-item');
+      });
+      if (visible.length < 2) return;
+      var moved = visible.slice(1);
+      moved.reverse().forEach(function(el) { older.prepend(el); });
+    })();
 
     const clMore = document.getElementById('clMore');
     const clOlder = document.getElementById('clOlder');

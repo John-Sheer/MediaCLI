@@ -316,6 +316,19 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     };
   }, []);
 
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden" && videoRef.current && !videoRef.current.paused) {
+        pausePosRef.current = videoRef.current.currentTime || 0;
+        videoRef.current.pause();
+        setPlaying(false);
+        setBuffering(false);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
+
   // Android WebView : rejoue un court échantillon audio HTML5 silencieux pour
   // forcer la ré-acquisition du focus audio (sinon l'audio ressort muet après
   // une pause). Workaround officiel recommandé pour WebView + WebAudio.

@@ -320,11 +320,31 @@ fn relaunch_app(app: tauri::AppHandle) {
 async fn download_apk(app: tauri::AppHandle, url: String) -> Result<String, String> {
     use std::io::Write;
 
+    #[cfg(target_os = "android")]
+    let client = {
+        use rustls::crypto::aws_lc_rs;
+        let mut roots = rustls::RootCertStore::empty();
+        roots.add_parsable_certificates(webpki_root_certs::TLS_SERVER_ROOT_CERTS.iter().cloned());
+        let config = rustls::ClientConfig::builder_with_provider(std::sync::Arc::new(
+            aws_lc_rs::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .map_err(|e| e.to_string())?
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+        reqwest::Client::builder()
+            .use_preconfigured_tls(config)
+            .build()
+            .map_err(|e| e.to_string())?
+    };
+    #[cfg(not(target_os = "android"))]
+    let client = reqwest::Client::new();
+
     let dir = app.path().app_cache_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let dest = dir.join("update.apk");
 
-    let mut response = reqwest::get(&url).await.map_err(|e| e.to_string())?;
+    let mut response = client.get(&url).send().await.map_err(|e| e.to_string())?;
     if !response.status().is_success() {
         return Err(format!("HTTP {}", response.status()));
     }
@@ -352,6 +372,25 @@ fn installer_handle(
     app.try_state::<InstallerHandle>()
         .map(|s| s.0.clone())
         .ok_or_else(|| "plugin installer non initialisé".to_string())
+}
+
+#[cfg(target_os = "android")]
+async fn prepare_android_binaries(app: &tauri::AppHandle) -> Option<PathBuf> {
+    let handle = installer_handle(app).ok()?;
+    let result = handle
+        .run_mobile_plugin_async::<serde_json::Value>(
+            "copyBinary",
+            serde_json::json!({}),
+        )
+        .await
+        .ok()?;
+    let ffmpeg = result
+        .get("ffmpeg")
+        .and_then(|v| v.as_str())
+        .map(PathBuf::from)?;
+    let dir = ffmpeg.parent().map(|p| p.to_path_buf())?;
+    eprintln!("[tauri] ffmpeg prêt dans {}", dir.display());
+    Some(dir)
 }
 
 #[tauri::command]
@@ -472,7 +511,10 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_shell::init());
     }
     builder = builder.plugin(tauri_plugin_dialog::init());
-    builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    }
     builder = builder.plugin(
         tauri::plugin::Builder::<tauri::Wry>::new("installer")
             .setup(|app, api| {
@@ -534,11 +576,19 @@ pub fn run() {
                 let resource_dir = PathBuf::from(".");
 
                 #[cfg(target_os = "android")]
+                let app_handle_for_copy = app.handle().clone();
+
+                #[cfg(target_os = "android")]
                 {
                     let _ = std::fs::write("/storage/emulated/0/Download/mediacli_crash.txt", "spawning server...\n");
                 }
 
                 tauri::async_runtime::spawn(async move {
+                    #[cfg(target_os = "android")]
+                    let resource_dir = match prepare_android_binaries(&app_handle_for_copy).await {
+                        Some(dir) => dir,
+                        None => resource_dir,
+                    };
                     server::start_server(output_dir, Some(resource_dir)).await;
                 });
             }
