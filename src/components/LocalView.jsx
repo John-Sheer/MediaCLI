@@ -1,11 +1,11 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { FolderOpen, Music, Video, Play, GripVertical, RefreshCw, Loader2, Search } from "lucide-react";
+import { FolderOpen, Music, Video, Play, GripVertical, RefreshCw, Loader2, Search, MoreVertical, ListPlus, Plus } from "lucide-react";
 
 
 function SkeletonRows() {
   return (
     <div className="flex flex-col items-center justify-center py-24 text-center animate-fade-in">
-      <div className="w-10 h-10 rounded-full border-2 border-white/15 border-t-white animate-spin mb-4" />
+      <div className="w-10 h-10 rounded-full border-2 border-white/15 border-t-accent-red animate-spin mb-4" />
       <p className="text-sm font-medium text-white/90">Scan en cours…</p>
       <p className="text-[11px] text-muted mt-1.5 font-mono">Analyse de vos dossiers</p>
     </div>
@@ -103,8 +103,32 @@ function FolderTile({ folder, onClick, active, playing }) {
   );
 }
 
-function SongNameRow({ file, index, playing, onPlay, dragHandlers, isDragging, registerRef, gripRef, gripHandlers }) {
+function SongNameRow({ file, index, playing, onPlay, dragHandlers, isDragging, registerRef, gripRef, gripHandlers, playlists, onAddToPlaylist, onCreateAndAdd }) {
   const isVideo = /\.(mp4|mkv|mov|webm)$/i.test(file.name);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [showPlSub, setShowPlSub] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuOpen(false);
+        setShowPlSub(false);
+      }
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [menuOpen]);
+
+  const addToPl = (id) => {
+    const track = { id: file.path, title: file.name, channel: "Local", thumbnail: null, duration: 0 };
+    if (id === "__new") onCreateAndAdd && onCreateAndAdd(track);
+    else onAddToPlaylist && onAddToPlaylist(id, track);
+    setShowPlSub(false);
+    setMenuOpen(false);
+  };
+
   return (
     <div
       {...dragHandlers}
@@ -137,30 +161,87 @@ function SongNameRow({ file, index, playing, onPlay, dragHandlers, isDragging, r
       {playing ? (
         <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-accent-red" aria-label="En lecture" />
       ) : (
-        <Play className="w-3.5 h-3.5 text-white/80 opacity-0 group-hover:opacity-100 transition-all duration-150 shrink-0" />
+        <>
+          <button
+            onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
+            className="p-1 rounded-md text-white/50 hover:text-white/80 hover:bg-white/[0.08] transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+          >
+            <MoreVertical className="w-3.5 h-3.5" />
+          </button>
+          <Play className="w-3.5 h-3.5 text-white/80 opacity-0 group-hover:opacity-0 transition-all duration-150 shrink-0" />
+        </>
+      )}
+      {menuOpen && (
+        <div
+          ref={menuRef}
+          onClick={(e) => e.stopPropagation()}
+          className="absolute right-2 top-full z-50 w-48 py-1 rounded-xl bg-[#111118] border border-white/[0.10] shadow-2xl animate-fade-in"
+        >
+          <button
+            onClick={() => { setMenuOpen(false); onPlay(); }}
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-[11px] text-white/85 hover:bg-white/[0.06] transition-colors"
+          >
+            <Play className="w-3.5 h-3.5" fill="currentColor" />
+            Écouter
+          </button>
+          <div className="h-px bg-white/[0.06] mx-2 my-0.5" />
+          <button
+            onClick={() => setShowPlSub(!showPlSub)}
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-[11px] text-white/85 hover:bg-white/[0.06] transition-colors"
+          >
+            <ListPlus className="w-3.5 h-3.5" />
+            Ajouter à une playlist
+          </button>
+          {showPlSub && (
+            <div className="ml-3 border-l border-white/[0.08] pl-1 pb-1">
+              <button
+                onClick={() => addToPl("__new")}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[10px] text-accent-red hover:bg-white/[0.06] rounded-md transition-colors"
+              >
+                <Plus className="w-3 h-3" />
+                Nouvelle playlist…
+              </button>
+              {Object.values(playlists || {}).map((pl) => (
+                <button
+                  key={pl.id}
+                  onClick={() => addToPl(pl.id)}
+                  className="w-full text-left px-2.5 py-1.5 text-[10px] text-white/80 hover:text-white hover:bg-white/[0.06] rounded-md transition-colors truncate"
+                >
+                  {pl.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
 }
 
-export function LocalView({ state, actions, onPlayFile }) {
-  const { localDirs, localScanning, localError, localFolder, localFiles, localFolderError } = state;
+export function LocalView({ state, actions, onPlayFile, playlists, onAddToPlaylist, onCreateAndAdd }) {
+  const { localDirs, localScanning, localError, localFolder, localFiles, localFolderError, localFolderLoading } = state;
 
   const scannedRef = useRef(false);
   useEffect(() => {
-    if (!localFolder && !scannedRef.current) {
+    if (!scannedRef.current) {
       scannedRef.current = true;
       actions.scanFolders();
     }
-  }, [localFolder]);
+  }, []);
 
   const playingRowRef = useRef(null);
   const filesScrollRef = useRef(null);
-
+  const contentScrollRef = useRef(null);
 
   useEffect(() => {
     if (filesScrollRef.current) filesScrollRef.current.scrollTop = 0;
   }, [localFolder]);
+
+  useEffect(() => {
+    if (localFiles.length > 0 && localFolder && contentScrollRef.current) {
+      setTimeout(() => contentScrollRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+    }
+  }, [localFiles.length, localFolder]);
 
   const [filterQuery, setFilterQuery] = useState("");
 
@@ -172,14 +253,12 @@ export function LocalView({ state, actions, onPlayFile }) {
 
   const openFolder = (path) => {
     if (localFolder === path) {
-      if (playingFolder === path) {
-        playingRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-        return;
+      if (playingFolder === path && playingRowRef.current) {
+        playingRowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
       }
-      actions.resetFolder();
-    } else {
-      actions.openFolder(path);
+      return;
     }
+    actions.openFolder(path);
   };
 
   const [order, setOrder] = useState([]);
@@ -349,24 +428,28 @@ export function LocalView({ state, actions, onPlayFile }) {
           <>
             {localScanning && (
               <div className="mb-4 flex items-center gap-2 text-[11px] font-mono text-white/85">
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-accent-red" />
                 Scan en cours… {localDirs.length} dossier{localDirs.length > 1 ? "s" : ""} trouvé{localDirs.length > 1 ? "s" : ""}
+                <div className="flex-1 h-[2px] bg-white/[0.06] rounded-full overflow-hidden ml-2">
+                  <div className="h-full bg-gradient-to-r from-accent-red/60 to-accent-red rounded-full animate-pulse" style={{ width: localDirs.length > 0 ? "60%" : "30%" }} />
+                </div>
               </div>
             )}
-          <div className="grid grid-cols-1 md:grid-cols-[minmax(240px,320px)_1fr] gap-5">
-            <div className="space-y-2 max-h-[calc(100vh-240px)] overflow-y-auto scroll-modern pr-1 md:border-r md:border-white/[0.06] md:pr-6">
-              {filteredDirs.map((d) => (
-                <FolderTile
-                  key={d.path}
-                  folder={d}
-                  active={localFolder === d.path}
-                  playing={playingFolder === d.path}
-                  onClick={() => openFolder(d.path)}
-                />
+            <div className="grid grid-cols-1 md:grid-cols-[minmax(240px,320px)_1fr] gap-5">
+            <div className="space-y-2 max-h-[calc(100vh-240px)] overflow-y-auto scroll-modern pr-1 md:border-r md:border-white/[0.06] md:pr-6 transition-all duration-300">
+              {filteredDirs.map((d, i) => (
+                <div key={d.path} className="transition-all duration-300" style={{ animationDelay: `${i * 30}ms` }}>
+                  <FolderTile
+                    folder={d}
+                    active={localFolder === d.path}
+                    playing={playingFolder === d.path}
+                    onClick={() => openFolder(d.path)}
+                  />
+                </div>
               ))}
             </div>
 
-            <div className="min-w-0 bg-blue-500/[0.04] rounded-xl p-3">
+            <div ref={contentScrollRef} className="min-w-0 bg-blue-500/[0.04] rounded-xl p-3">
               {!localFolder ? (
                 <div className="flex flex-col items-center justify-center h-full py-16 text-center">
                   <FolderOpen className="w-10 h-10 text-white/80 mb-3" />
@@ -382,7 +465,13 @@ export function LocalView({ state, actions, onPlayFile }) {
                   </div>
 
                   {localFolderError && <ErrorBox message={localFolderError} />}
-                  {!localFolderError && localFiles.length === 0 && (
+                  {localFolderLoading && (
+                    <div className="flex items-center gap-2 text-[11px] font-mono text-white/85 py-4">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Chargement…
+                    </div>
+                  )}
+                  {!localFolderLoading && !localFolderError && localFiles.length === 0 && (
                     <p className="text-[11px] text-muted mt-3">Aucun fichier audio ou vidéo dans ce dossier.</p>
                   )}
 
@@ -402,6 +491,9 @@ export function LocalView({ state, actions, onPlayFile }) {
                         registerRef={(el) => { rowEls.current.set(f.path, el); if (playingPath && playingPath === f.path) playingRowRef.current = el; }}
                         gripRef={(el) => { gripEls.current.set(f.path, el); }}
                         gripHandlers={gripHandlers(i, f.path)}
+                        playlists={playlists}
+                        onAddToPlaylist={onAddToPlaylist}
+                        onCreateAndAdd={onCreateAndAdd}
                       />
                     ))}
                   </div>

@@ -2,11 +2,58 @@
 #![allow(unused_variables, unused_imports)]
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use tauri::Manager;
 use tauri::Emitter;
 
 mod server;
+
+// État de lecture global (mis à jour par le frontend) pour savoir si la fenêtre
+// doit être masquée dans le tray ou réellement fermée.
+static IS_PLAYING: AtomicBool = AtomicBool::new(false);
+
+#[cfg(desktop)]
+mod tray_state {
+    use std::sync::{Mutex, OnceLock};
+    use tauri::menu::MenuItem;
+
+    pub struct TrayHandles {
+        pub now_title: MenuItem,
+        pub now_artist: MenuItem,
+        pub play_pause: MenuItem,
+    }
+
+    pub static TRAY: OnceLock<Mutex<Option<TrayHandles>>> = OnceLock::new();
+
+    pub fn init() -> &'static Mutex<Option<TrayHandles>> {
+        TRAY.get_or_init(|| Mutex::new(None))
+    }
+
+    pub fn set(handles: TrayHandles) {
+        *init().lock().unwrap() = Some(handles);
+    }
+
+    pub fn update(playing: Option<bool>, title: Option<&str>, artist: Option<&str>) {
+        let lock = init().lock().unwrap();
+        let Some(h) = lock.as_ref() else { return };
+        let t = title.unwrap_or("");
+        let a = artist.unwrap_or("");
+        if !t.is_empty() {
+            let _ = h.now_title.set_text(&format!("  \u{266A} {}", t));
+        } else {
+            let _ = h.now_title.set_text("  \u{266A} Aucune piste");
+        }
+        if !a.is_empty() {
+            let _ = h.now_artist.set_text(&format!("  {}", a));
+        } else {
+            let _ = h.now_artist.set_text("  MediaCLI");
+        }
+        if let Some(p) = playing {
+            let _ = h.play_pause.set_text(if p { "\u{23F8}  Pause" } else { "\u{25B6}  Lecture" });
+        }
+    }
+}
 
 #[cfg(target_os = "windows")]
 mod thumbbar {
@@ -277,13 +324,97 @@ mod thumbbar {
 }
 
 #[tauri::command]
-fn set_thumbbar_playing(playing: bool) {
+async fn set_playing_state(
+    app: tauri::AppHandle,
+    playing: bool,
+    title: Option<String>,
+    artist: Option<String>,
+    position_ms: Option<f64>,
+    duration_ms: Option<f64>,
+) {
+    eprintln!("[set_playing_state] playing={} title={:?} artist={:?} pos={:?} dur={:?}", playing, title, artist, position_ms, duration_ms);
+    IS_PLAYING.store(playing, Ordering::SeqCst);
+    #[cfg(desktop)]
+    tray_state::update(Some(playing), title.as_deref(), artist.as_deref());
     #[cfg(target_os = "windows")]
     {
         if let Some(hwnd) = thumbbar::get_hwnd() {
             thumbbar::update_buttons(hwnd, playing);
         }
     }
+    #[cfg(target_os = "android")]
+    {
+        if let Some(handle) = app.try_state::<BackgroundHandle>() {
+            let _ = handle
+                .0
+                .run_mobile_plugin_async::<serde_json::Value>(
+                    "setPlayback",
+                    serde_json::json!({
+                        "playing": playing,
+                        "title": title.unwrap_or_default(),
+                        "artist": artist.unwrap_or_default(),
+                        "position_ms": position_ms.unwrap_or(0.0) as u64,
+                        "duration_ms": duration_ms.unwrap_or(0.0) as u64,
+                    }),
+                )
+                .await;
+        }
+    }
+}
+
+#[tauri::command]
+async fn update_position(
+    app: tauri::AppHandle,
+    position_ms: f64,
+    duration_ms: f64,
+) {
+    #[cfg(target_os = "android")]
+    {
+        if let Some(handle) = app.try_state::<BackgroundHandle>() {
+            let _ = handle
+                .0
+                .run_mobile_plugin_async::<serde_json::Value>(
+                    "updatePosition",
+                    serde_json::json!({
+                        "position_ms": position_ms as u64,
+                        "duration_ms": duration_ms as u64,
+                    }),
+                )
+                .await;
+        }
+    }
+    #[cfg(not(target_os = "android"))]
+    let _ = (app, position_ms, duration_ms);
+}
+
+#[derive(serde::Serialize)]
+struct BackgroundState {
+    background: bool,
+}
+
+#[tauri::command]
+async fn background_state(app: tauri::AppHandle) -> BackgroundState {
+    #[cfg(target_os = "android")]
+    {
+        if let Some(handle) = app.try_state::<BackgroundHandle>() {
+            let res = handle
+                .0
+                .run_mobile_plugin_async::<serde_json::Value>(
+                    "backgroundState",
+                    serde_json::json!({}),
+                )
+                .await;
+            if let Ok(val) = res {
+                let obj = val.as_object().cloned().unwrap_or_default();
+                return BackgroundState {
+                    background: obj.get("background").and_then(|v| v.as_bool()).unwrap_or(false),
+                };
+            }
+        }
+    }
+    #[cfg(not(target_os = "android"))]
+    let _ = app;
+    BackgroundState { background: false }
 }
 
 #[tauri::command]
@@ -308,8 +439,105 @@ async fn request_android_storage_permission() -> bool {
     true
 }
 
+// Affiche et ramène la fenêtre au premier plan (utilisé depuis le tray).
+#[cfg(desktop)]
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.show();
+        let _ = win.unminimize();
+        let _ = win.set_focus();
+    }
+}
+
+// Bascule afficher/masquer la fenêtre (clic gauche sur l'icône du tray).
+#[cfg(desktop)]
+fn toggle_main_window(app: &tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("main") {
+        if let Ok(true) = win.is_visible() {
+            let _ = win.hide();
+            return;
+        }
+        let _ = win.show();
+        let _ = win.unminimize();
+        let _ = win.set_focus();
+    }
+}
+
+// Configure l'icône de la barre système avec les contrôles de lecture.
+#[cfg(desktop)]
+fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+
+    let sep_top = PredefinedMenuItem::separator(app)?;
+    let now_title = MenuItem::with_id(app, "tray-now-title", "  \u{266A} Aucune piste", false, None::<&str>)?;
+    let now_artist = MenuItem::with_id(app, "tray-now-artist", "  MediaCLI", false, None::<&str>)?;
+    let sep1 = PredefinedMenuItem::separator(app)?;
+    let play = MenuItem::with_id(app, "tray-toggle-play", "\u{25B6}  Lecture", true, None::<&str>)?;
+    let previous = MenuItem::with_id(app, "tray-previous", "\u{23EE}  Piste précédente", true, None::<&str>)?;
+    let next = MenuItem::with_id(app, "tray-next", "\u{23ED}  Piste suivante", true, None::<&str>)?;
+    let sep2 = PredefinedMenuItem::separator(app)?;
+    let show = MenuItem::with_id(app, "tray-show", "\u{1F4E6}  Afficher", true, None::<&str>)?;
+    let sep3 = PredefinedMenuItem::separator(app)?;
+    let quit = MenuItem::with_id(app, "tray-quit", "\u{274C}  Quitter", true, None::<&str>)?;
+
+    tray_state::set(tray_state::TrayHandles {
+        now_title: now_title.clone(),
+        now_artist: now_artist.clone(),
+        play_pause: play.clone(),
+    });
+
+    let menu = Menu::with_items(app, &[
+        &sep_top, &now_title, &now_artist, &sep1,
+        &play, &previous, &next, &sep2,
+        &show, &sep3, &quit,
+    ])?;
+
+    TrayIconBuilder::with_id("mediacli-tray")
+        .icon(
+            app.default_window_icon()
+                .expect("icône par défaut manquante")
+                .clone(),
+        )
+        .tooltip("MediaCLI \u{2014} aucun morceau en lecture")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "tray-show" => show_main_window(app),
+            "tray-toggle-play" => {
+                let _ = app.emit("thumbbar-action", "toggle-play");
+            }
+            "tray-previous" => {
+                let _ = app.emit("thumbbar-action", "previous");
+            }
+            "tray-next" => {
+                let _ = app.emit("thumbbar-action", "next");
+            }
+            "tray-quit" => {
+                app.exit(0);
+            }
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                toggle_main_window(tray.app_handle());
+            }
+        })
+        .build(app)?;
+
+    Ok(())
+}
+
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 struct InstallerHandle(tauri::plugin::PluginHandle<tauri::Wry>);
+
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+struct BackgroundHandle(tauri::plugin::PluginHandle<tauri::Wry>);
 
 #[tauri::command]
 fn relaunch_app(app: tauri::AppHandle) {
@@ -376,21 +604,43 @@ fn installer_handle(
 
 #[cfg(target_os = "android")]
 async fn prepare_android_binaries(app: &tauri::AppHandle) -> Option<PathBuf> {
-    let handle = installer_handle(app).ok()?;
-    let result = handle
-        .run_mobile_plugin_async::<serde_json::Value>(
-            "copyBinary",
-            serde_json::json!({}),
-        )
-        .await
-        .ok()?;
-    let ffmpeg = result
-        .get("ffmpeg")
-        .and_then(|v| v.as_str())
-        .map(PathBuf::from)?;
-    let dir = ffmpeg.parent().map(|p| p.to_path_buf())?;
-    eprintln!("[tauri] ffmpeg prêt dans {}", dir.display());
-    Some(dir)
+    match installer_handle(app) {
+        Ok(handle) => {
+            match handle
+                .run_mobile_plugin_async::<serde_json::Value>(
+                    "copyBinary",
+                    serde_json::json!({}),
+                )
+                .await
+            {
+                Ok(result) => match result.get("ffmpeg").and_then(|v| v.as_str()).map(PathBuf::from) {
+                    Some(ffmpeg) => match ffmpeg.parent() {
+                        Some(dir) => {
+                            let dir = dir.to_path_buf();
+                            eprintln!("[tauri] ffmpeg prêt dans {}", dir.display());
+                            Some(dir)
+                        }
+                        None => {
+                            eprintln!("[tauri] copyBinary ffmpeg sans parent: {:?}", ffmpeg);
+                            None
+                        }
+                    },
+                    None => {
+                        eprintln!("[tauri] copyBinary sans champ ffmpeg: {:?}", result);
+                        None
+                    }
+                },
+                Err(e) => {
+                    eprintln!("[tauri] copyBinary erreur: {}", e);
+                    None
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("[tauri] installer_handle: {}", e);
+            None
+        }
+    }
 }
 
 #[tauri::command]
@@ -515,27 +765,51 @@ pub fn run() {
     {
         builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     }
-    builder = builder.plugin(
-        tauri::plugin::Builder::<tauri::Wry>::new("installer")
-            .setup(|app, api| {
-                #[cfg(target_os = "android")]
-                {
-                    let handle = api
-                        .register_android_plugin("com.johnsheer.mediacli", "InstallerPlugin")
-                        .map_err(|e| e.to_string())?;
-                    app.manage(InstallerHandle(handle));
-                }
-                #[cfg(not(target_os = "android"))]
-                {
-                    let _ = (app, api);
-                }
-                Ok(())
-            })
-            .build()
-    );
+    builder = builder
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry>::new("installer")
+                .setup(|app, api| {
+                    #[cfg(target_os = "android")]
+                    {
+                        let handle = api
+                            .register_android_plugin("com.johnsheer.mediacli", "InstallerPlugin")
+                            .map_err(|e| e.to_string())?;
+                        app.manage(InstallerHandle(handle));
+                    }
+                    #[cfg(not(target_os = "android"))]
+                    {
+                        let _ = (app, api);
+                    }
+                    Ok(())
+                })
+                .build(),
+        )
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry>::new("background")
+                .setup(|app, api| {
+                    #[cfg(target_os = "android")]
+                    {
+                        let bg_handle = api
+                            .register_android_plugin("com.johnsheer.mediacli", "BackgroundPlugin")
+                            .map_err(|e| e.to_string())?;
+                        app.manage(BackgroundHandle(bg_handle));
+                    }
+                    #[cfg(not(target_os = "android"))]
+                    {
+                        let _ = (app, api);
+                    }
+                    Ok(())
+                })
+                .build(),
+        );
 
     builder
         .setup(|app| {
+            // Lecture en arrière-plan : icône tray pour contrôler la lecture
+            // même quand la fenêtre est masquée.
+            #[cfg(desktop)]
+            setup_tray(app)?;
+
             #[cfg(target_os = "windows")]
             {
                 if let Some(window) = app.get_webview_window("main") {
@@ -560,7 +834,15 @@ pub fn run() {
                     .map(PathBuf::from)
                     .unwrap_or_else(|_| {
                         if cfg!(target_os = "android") {
-                            PathBuf::from("/storage/emulated/0/MediaCLI")
+                            let primary = PathBuf::from("/storage/emulated/0/MediaCLI");
+                            if std::fs::create_dir_all(&primary).is_ok() && std::fs::write(primary.join(".write_test"), b"ok").is_ok() {
+                                let _ = std::fs::remove_file(primary.join(".write_test"));
+                                primary
+                            } else {
+                                let fallback = PathBuf::from("/storage/emulated/0/Android/data/com.johnsheer.mediacli/files/MediaCLI");
+                                let _ = std::fs::create_dir_all(&fallback);
+                                fallback
+                            }
                         } else {
                             PathBuf::from("C:\\MediaCLI")
                         }
@@ -596,6 +878,17 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            // Fermeture en arrière-plan : si une piste est en cours de lecture,
+            // on masque la fenêtre dans le tray au lieu de quitter l'application.
+            #[cfg(desktop)]
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if IS_PLAYING.load(Ordering::SeqCst) {
+                    api.prevent_close();
+                    let _ = window.hide();
+                    return;
+                }
+            }
+
             #[cfg(desktop)]
             if let tauri::WindowEvent::Destroyed = event {
                 if let Some(state) = window.try_state::<ServerChildProcess>() {
@@ -609,7 +902,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             select_folder_dialog,
-            set_thumbbar_playing,
+            set_playing_state,
+            update_position,
+            background_state,
             request_android_storage_permission,
             relaunch_app,
             download_apk,

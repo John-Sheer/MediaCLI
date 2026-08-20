@@ -33,10 +33,12 @@ const initialState = {
   localFolder: "",
   localFiles: [],
   localFolderError: null,
+  localFolderLoading: false,
 
   // téléchargements
   downloadStatus: {},
   downloadProgress: {},
+  downloadErrors: {},
 
   // playlists sauvegardées
   playlists: {},
@@ -67,11 +69,10 @@ function nextIndex(playlist, currentId, isLocal, shuffle, repeatMode) {
     do {
       r = Math.floor(Math.random() * playlist.length);
       attempts++;
-    } while (playlist[r] && (isLocal ? playlist[r].path : playlist[r].id) === currentId && attempts < playlist.length);
+    } while (playlist[r] && (isLocal ? (playlist[r].path || playlist[r].id) : playlist[r].id) === currentId && attempts < playlist.length);
     return r;
   }
-  const key = isLocal ? "path" : "id";
-  const idx = playlist.findIndex((s) => s[key] === currentId);
+  const idx = playlist.findIndex((s) => (isLocal ? (s.path || s.id) : s.id) === currentId);
   if (idx === -1) return 0;
   if (idx < playlist.length - 1) return idx + 1;
   if (repeatMode === "all") return 0;
@@ -80,8 +81,7 @@ function nextIndex(playlist, currentId, isLocal, shuffle, repeatMode) {
 
 function prevIndex(playlist, currentId, isLocal, repeatMode) {
   if (playlist.length === 0) return -1;
-  const key = isLocal ? "path" : "id";
-  const idx = playlist.findIndex((s) => s[key] === currentId);
+  const idx = playlist.findIndex((s) => (isLocal ? (s.path || s.id) : s.id) === currentId);
   if (idx === -1) return 0;
   if (idx > 0) return idx - 1;
   if (repeatMode === "all") return playlist.length - 1;
@@ -146,10 +146,11 @@ function reducer(state, action) {
       const item = state.playlist[action.index];
       if (!item) return state;
       if (state.isLocal) {
+        const path = item.path || item.id;
         return {
           ...state,
-          currentSong: { id: item.path, title: item.name, channel: "Local", thumbnail: null, duration: 0 },
-          streamUrl: `${api.base}/local?path=${encodeURIComponent(item.path)}`,
+          currentSong: { id: path, title: item.title || item.name, channel: "Local", thumbnail: null, duration: 0 },
+          streamUrl: `${api.base}/local?path=${encodeURIComponent(path)}`,
         };
       }
       return {
@@ -172,7 +173,7 @@ function reducer(state, action) {
     }
 
     case "PLAY_ENDED": {
-      if (state.repeatMode === "one") return reducer(state, { type: "PLAY_AT", index: state.playlist.findIndex((s) => (state.isLocal ? s.path : s.id) === state.currentSong?.id) });
+      if (state.repeatMode === "one") return reducer(state, { type: "PLAY_AT", index: state.playlist.findIndex((s) => (state.isLocal ? (s.path || s.id) : s.id) === state.currentSong?.id) });
       return reducer(state, { type: "PLAY_NEXT" });
     }
 
@@ -194,7 +195,7 @@ function reducer(state, action) {
     }
 
     case "LOCAL_SCAN_START":
-      return { ...state, localScanning: true, localError: null, localDirs: [], localFolder: "", localFiles: [] };
+      return { ...state, localScanning: true, localError: null };
 
     case "LOCAL_SCAN_PROGRESS": {
       if (state.localDirs.some((d) => d.path === action.folder.path)) return state;
@@ -208,13 +209,13 @@ function reducer(state, action) {
       return { ...state, localScanning: false, localError: action.error };
 
     case "LOCAL_OPEN_FOLDER":
-      return { ...state, localFolder: action.path, localFiles: [], localFolderError: null };
+      return { ...state, localFolder: action.path, localFiles: [], localFolderError: null, localFolderLoading: true };
 
     case "LOCAL_FILES_LOADED":
-      return { ...state, localFiles: action.files };
+      return { ...state, localFiles: action.files, localFolderLoading: false };
 
     case "LOCAL_FOLDER_ERROR":
-      return { ...state, localFolderError: action.error };
+      return { ...state, localFolderError: action.error, localFolderLoading: false };
 
     case "LOCAL_RESET_FOLDER":
       return { ...state, localFolder: "", localFiles: [], localFolderError: null };
@@ -224,6 +225,9 @@ function reducer(state, action) {
 
     case "DOWNLOAD_PROGRESS":
       return { ...state, downloadProgress: { ...state.downloadProgress, [action.key]: action.progress } };
+
+    case "DOWNLOAD_ERROR":
+      return { ...state, downloadErrors: { ...state.downloadErrors, [action.key]: action.info } };
 
     case "CREATE_PLAYLIST": {
       const id = action.id || `pl_${Date.now()}`;

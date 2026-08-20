@@ -1,29 +1,30 @@
-import { Logo, CLIText, CLI_COLOR } from "./Logo.jsx";
+import { Logo, CLIText } from "./Logo.jsx";
 import VpnButton from "./VpnButton.jsx";
 import { ListMusic } from "lucide-react";
 
 export function HomeHeader({ torActive, onToggleTor, onAbout }) {
   return (
-    <header className="pt-3 pb-3" data-tauri-drag-region>
+    <header className="pt-3 pb-2" data-tauri-drag-region>
       <div className="flex items-center justify-between">
-        <div className="animate-fade-in flex items-center gap-4">
+        <div className="animate-fade-in flex items-center gap-3">
           <button
             onClick={onAbout}
-            className="relative w-12 h-12 rounded-xl bg-gradient-to-b from-surface to-panel ring-1 ring-white/[0.08] flex items-center justify-center shrink-0 hover:ring-accent-red/40 hover:bg-accent-red/[0.04] transition-all duration-300 group active:scale-95"
+            className="w-[56px] h-[56px] rounded-2xl bg-gradient-to-b from-surface to-panel ring-1 ring-white/[0.08] flex items-center justify-center shrink-0 hover:ring-accent-red/40 hover:bg-accent-red/[0.04] transition-all duration-300 group active:scale-95 p-0 overflow-hidden"
           >
-            <span className="absolute inset-0 rounded-xl bg-gradient-to-br from-accent-red/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-            <Logo className="w-8 h-8 relative" />
+            <Logo className="w-[56px] h-[56px]" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">
+            <h1 className="text-xl font-bold tracking-tight">
               <CLIText />
             </h1>
-            <p className="text-[11px] text-muted tracking-wide mt-0.5">
+            <p className="text-[10px] text-muted tracking-wide mt-0.5">
               Bibliothèque multimédia · Local &amp; Streaming
             </p>
           </div>
         </div>
-        <VpnButton torActive={torActive} onToggle={onToggleTor} />
+        <div className="flex items-center gap-1.5">
+          <VpnButton torActive={torActive} onToggle={onToggleTor} />
+        </div>
       </div>
       <div className="mt-3 h-px" style={{ background: `linear-gradient(to right, transparent, rgba(255,59,92,0.25), transparent)` }} />
     </header>

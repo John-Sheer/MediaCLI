@@ -10,12 +10,12 @@ import { VpnModal } from "./components/VpnModal.jsx";
 import UpdateManager from "./components/UpdateManager.jsx";
 import Player from "./components/Player.jsx";
 import QueuePanel from "./components/QueuePanel.jsx";
+import Settings from "./components/Settings.jsx";
 import { Logo } from "./components/Logo.jsx";
 import { useStore } from "./store/store.jsx";
 import { useActions } from "./store/actions.js";
 import { api } from "./api/client.js";
-import { listen } from "@tauri-apps/api/event";
-import { AlertTriangle, X } from "lucide-react";
+import { onThumbbarAction } from "./lib/thumbbar.js";
 
 
 export default function App() {
@@ -24,14 +24,15 @@ export default function App() {
   const IS_ANDROID = /android/i.test(navigator.userAgent || "");
   const scrollRef = useRef(null);
   const [showQueue, setShowQueue] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
-  // Thumbbar: listen for previous/next from taskbar buttons
+  // Thumbbar: listen for previous/next from taskbar buttons / notification
   useEffect(() => {
-    const unlisten = listen("thumbbar-action", (e) => {
-      if (e.payload === "previous") actions.playPrev();
-      if (e.payload === "next") actions.playNext();
+    return onThumbbarAction((action) => {
+      if (action === "previous") actions.playPrev();
+      if (action === "next") actions.playNext();
+      if (action === "stop") actions.stop();
     });
-    return () => { unlisten.then((fn) => fn()).catch(() => {}); };
   }, [actions]);
 
   const handleScrollHover = (e) => {
@@ -132,7 +133,12 @@ export default function App() {
     if (!pl || pl.tracks.length === 0) return;
     const start = trackId ? pl.tracks.findIndex((t) => t.id === trackId) : 0;
     const first = pl.tracks[start >= 0 ? start : 0];
-    actions.play(first, pl.tracks);
+    const isLocalTrack = first.channel === "Local";
+    if (isLocalTrack) {
+      actions.playLocal(first, first.id, pl.tracks);
+    } else {
+      actions.play(first, pl.tracks);
+    }
   };
 
   const handleDeletePlaylist = (id) => actions.deletePlaylist(id);
@@ -150,23 +156,7 @@ export default function App() {
     <div className="h-screen flex flex-col bg-gradient-to-b from-bg via-[#07070d] to-bg">
       <div className="fixed -top-px left-0 right-0 h-px bg-bg z-[9999]" />
       <div className="fixed inset-0 bg-grain pointer-events-none" />
-      {!state.playerFullscreen && <TitleBar onAbout={() => dispatch({ type: "TOGGLE_ABOUT", open: true })} />}
-
-      {state.error && (
-        <div className="fixed top-12 left-0 right-0 z-[9998] flex justify-center px-4 pointer-events-none">
-          <div className="pointer-events-auto flex items-start gap-2 px-3 py-2 rounded-lg bg-red-500/[0.12] ring-1 ring-red-500/25 text-[11px] text-red-300/95 shadow-lg shadow-black/40 max-w-md">
-            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-[1px] text-red-400" />
-            <span className="break-words min-w-0 leading-snug">{state.error}</span>
-            <button
-              onClick={() => dispatch({ type: "SET_ERROR", error: null })}
-              className="ml-1 shrink-0 text-red-400/70 hover:text-red-300 transition-colors"
-              title="Fermer"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
+          {!state.playerFullscreen && <TitleBar onAbout={() => dispatch({ type: "TOGGLE_ABOUT", open: true })} onClose={actions.stop} />}
 
       <div
         className={`${state.playerFullscreen ? "hidden" : "flex-1 min-h-0 flex flex-col"}`}
@@ -210,11 +200,12 @@ export default function App() {
                 onAddToPlaylist={handleAddToPlaylist}
                 onCreateAndAdd={handleCreateAndAdd}
                 onOpenDownloads={handleOpenDownloads}
+                onAuthorize={() => api.requestPermissions()}
               />
             )}
 
             {state.homeTab === "local" && (
-              <LocalView state={state} actions={actions} onPlayFile={playLocalFile} />
+              <LocalView state={state} actions={actions} onPlayFile={playLocalFile} playlists={state.playlists} onAddToPlaylist={handleAddToPlaylist} onCreateAndAdd={handleCreateAndAdd} />
             )}
 
             {state.homeTab === "playlists" && (
@@ -222,14 +213,14 @@ export default function App() {
                 playlists={state.playlists}
                 onPlay={handlePlayPlaylist}
                 onDelete={handleDeletePlaylist}
-                onCreate={() => {
-                  const name = window.prompt("Nom de la nouvelle playlist :", "Ma playlist");
-                  if (name !== null) dispatch({ type: "CREATE_PLAYLIST", name: name || "Ma playlist" });
-                }}
+                onRename={(id, name) => dispatch({ type: "RENAME_PLAYLIST", id, name })}
+                onCreate={(name) => dispatch({ type: "CREATE_PLAYLIST", name })}
+                localDirs={state.localDirs}
+                onAddToPlaylist={handleAddToPlaylist}
               />
             )}
 
-            <Footer onAbout={() => dispatch({ type: "TOGGLE_ABOUT", open: true })} />
+            <Footer onAbout={() => dispatch({ type: "TOGGLE_ABOUT", open: true })} onSettings={() => setShowSettings(true)} />
           </div>
         </div>
       </div>
@@ -255,6 +246,7 @@ export default function App() {
         onRemoveFromPlaylist={handleRemoveFromPlaylist}
         showQueue={showQueue}
         onToggleQueue={() => setShowQueue(v => !v)}
+        onDownload={actions.download}
       />
 
       <QueuePanel
@@ -275,6 +267,7 @@ export default function App() {
         <VpnModal torActive={state.torActive} onConfirm={confirmVpn} onSkip={skipVpn} />
       )}
       <UpdateManager />
+      {showSettings && <Settings open={showSettings} onClose={() => setShowSettings(false)} />}
     </div>
   );
 }

@@ -10,7 +10,26 @@ function formatDuration(seconds) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-export default function SongCard({ song, onPlay, onDownload, status, progress, menuOpen, onMenuToggle, playlists = {}, onAddToPlaylist, onCreateAndAdd, isPlaying }) {
+function ErrorTag({ info, onAuthorize }) {
+  if (!info) return null;
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[9px] text-red-400/90 leading-none" title={info.message}>
+      <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
+      <span className="font-mono shrink-0">[{info.code}]</span>
+      <span className="truncate">{info.message}</span>
+      {info.code === "PERM" && onAuthorize && (
+        <button
+          onClick={onAuthorize}
+          className="shrink-0 px-1.5 py-0.5 rounded-md text-[9px] font-semibold text-accent-red bg-accent-red/[0.10] ring-1 ring-accent-red/25 hover:bg-accent-red/[0.18] hover:ring-accent-red/50 transition-all duration-150 active:scale-95"
+        >
+          Autoriser
+        </button>
+      )}
+    </span>
+  );
+}
+
+export default function SongCard({ song, onPlay, onDownload, status, progress, errors = {}, menuOpen, onMenuToggle, playlists = {}, onAddToPlaylist, onCreateAndAdd, isPlaying, onAuthorize }) {
   const [showPlSub, setShowPlSub] = useState(false);
 
   const addToPl = (id) => {
@@ -40,7 +59,7 @@ export default function SongCard({ song, onPlay, onDownload, status, progress, m
         onClick={(e) => { e.stopPropagation(); onDownload(song, type); }}
         disabled={isDownloading || isDone}
         title={isError ? `Échec du téléchargement ${label} — réessayer` : `Télécharger ${label}`}
-        className={`group/btn relative flex items-center gap-1.5 pl-2 pr-2.5 py-1.5 rounded-lg overflow-hidden transition-all duration-200 active:scale-[0.93] disabled:cursor-default ${
+        className={`group/btn relative flex items-center gap-1.5 pl-2 pr-2.5 py-1.5 rounded-lg overflow-hidden transition-all duration-300 active:scale-[0.93] disabled:cursor-default ${
           isDone
             ? "text-green-400/90 bg-green-400/[0.08]"
             : isDownloading
@@ -64,8 +83,8 @@ export default function SongCard({ song, onPlay, onDownload, status, progress, m
         {isDownloading && (
           <div className="absolute left-0 right-0 bottom-[3px] h-[2px] bg-white/[0.06] rounded-full overflow-hidden mx-1">
             <div
-              className="h-full bg-gradient-to-r from-green-500 to-green-300 rounded-full transition-[width] duration-300 ease-out"
-              style={{ width: `${Math.max(3, percent)}%` }}
+              className="h-full bg-gradient-to-r from-green-500 to-green-300 rounded-full transition-[width] duration-500 ease-out"
+              style={{ width: `${Math.max(3, percent)}%`, boxShadow: "0 0 6px rgba(74,222,128,0.4)" }}
             />
           </div>
         )}
@@ -135,6 +154,12 @@ export default function SongCard({ song, onPlay, onDownload, status, progress, m
           {renderButton("audio", "MP3", Download)}
           {renderButton("video", "MP4", Download)}
         </div>
+        {(errors.audio || errors.video) && (
+          <div className="w-full flex flex-wrap items-center gap-x-3 gap-y-0.5 justify-end pr-1" onClick={(e) => e.stopPropagation()}>
+            <ErrorTag info={errors.audio} onAuthorize={onAuthorize} />
+            <ErrorTag info={errors.video} onAuthorize={onAuthorize} />
+          </div>
+        )}
       </div>
 
       {menuOpen && (

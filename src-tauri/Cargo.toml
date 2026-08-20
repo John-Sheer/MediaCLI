@@ -1,6 +1,6 @@
 [package]
 name = "media-cli"
-version = "0.1.12"
+version = "0.1.14"
 description = "MédiaCLI — Application de musique via YouTube"
 edition = "2021"
 
@@ -16,14 +16,14 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "io-util", "fs", "time", "net"] }
 axum = { version = "0.8", features = ["macros"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "gzip", "brotli", "deflate"] }
 rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "aws_lc_rs"] }
 webpki-root-certs = "1"
 jni = "0.21"

@@ -6,6 +6,11 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+}
+
 html { margin: 0; padding: 0; overflow: hidden; border: 0; }
 body { margin: 0; padding: 0; overflow: hidden; border: 0; }
 body {

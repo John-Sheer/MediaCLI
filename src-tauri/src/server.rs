@@ -1841,6 +1841,17 @@ fn yt_dlp_path(state: &ServerState) -> String {
 }
 
 fn ffmpeg_path(state: &ServerState) -> String {
+    #[cfg(target_os = "android")]
+    {
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(parent) = exe.parent() {
+                let p = parent.join("libffmpeg.so");
+                if p.exists() {
+                    return p.to_string_lossy().to_string();
+                }
+            }
+        }
+    }
     state
         .resource_dir
         .as_ref()
@@ -2257,12 +2268,22 @@ async fn handle_download(
                 args.push("--socket-timeout".into());
                 args.push("120".into());
             }
-            let output = new_cmd(&ytdlp).args(&args).output().await;
+            let output = tokio::time::timeout(Duration::from_secs(300), new_cmd(&ytdlp).args(&args).output()).await;
             match output {
-                Ok(o) if o.status.success() => {}
-                _ => {
+                Ok(Ok(o)) if o.status.success() => {}
+                Ok(Ok(o)) => {
+                    let stderr = String::from_utf8_lossy(&o.stderr).trim().to_string();
+                    let msg = if stderr.is_empty() { "Erreur de téléchargement audio".into() } else { stderr };
                     state.progress_map.write().await.remove(&status_key);
-                    return json_response(serde_json::json!({"success": false, "error": "Erreur de téléchargement audio"}), StatusCode::INTERNAL_SERVER_ERROR, origin);
+                    return json_response(serde_json::json!({"success": false, "error": msg}), StatusCode::INTERNAL_SERVER_ERROR, origin);
+                }
+                Ok(Err(e)) => {
+                    state.progress_map.write().await.remove(&status_key);
+                    return json_response(serde_json::json!({"success": false, "error": format!("Impossible de lancer yt-dlp: {}", e)}), StatusCode::INTERNAL_SERVER_ERROR, origin);
+                }
+                Err(_) => {
+                    state.progress_map.write().await.remove(&status_key);
+                    return json_response(serde_json::json!({"success": false, "error": "Timeout du téléchargement audio (5 min)"}), StatusCode::INTERNAL_SERVER_ERROR, origin);
                 }
             }
             state.progress_map.write().await.insert(status_key.clone(), 80.0);
@@ -2282,26 +2303,28 @@ async fn handle_download(
                 }
             };
             let final_path = target_dir.join(format!("{}.mp3", safe_title));
-            let conv_output = new_cmd(&ffmpeg)
+            let conv_output = tokio::time::timeout(Duration::from_secs(120), new_cmd(&ffmpeg)
                 .args([
                     "-i", &temp_file.to_string_lossy(),
                     "-vn", "-acodec", "libmp3lame", "-q:a", "2",
                     &final_path.to_string_lossy(),
                     "-y", "-loglevel", "error",
                 ])
-                .output()
-                .await;
+                .output()).await;
             let _ = fs::remove_file(&temp_file);
             match conv_output {
-                Ok(o) if o.status.success() => {
+                Ok(Ok(o)) if o.status.success() => {
                     state.progress_map.write().await.insert(status_key, 100.0);
                     json_response(serde_json::json!({"success": true, "path": final_path.to_string_lossy()}), StatusCode::OK, origin)
                 }
                 _ => {
-                    let err = conv_output
-                        .ok()
-                        .map(|o| String::from_utf8_lossy(&o.stderr).trim().to_string())
-                        .unwrap_or_else(|| "Erreur de conversion MP3".into());
+                    let _ = fs::remove_file(&final_path);
+                    let err = match conv_output {
+                        Ok(Ok(o)) => String::from_utf8_lossy(&o.stderr).trim().to_string(),
+                        Ok(Err(e)) => format!("spawn: {}", e),
+                        Err(_) => "Timeout de la conversion MP3 (120s)".into(),
+                    };
+                    state.progress_map.write().await.remove(&status_key);
                     json_response(serde_json::json!({"success": false, "error": err}), StatusCode::INTERNAL_SERVER_ERROR, origin)
                 }
             }
@@ -2323,17 +2346,22 @@ async fn handle_download(
                 args.push("--socket-timeout".into());
                 args.push("300".into());
             }
-            let output = new_cmd(&ytdlp).args(&args).output().await;
+            let output = tokio::time::timeout(Duration::from_secs(600), new_cmd(&ytdlp).args(&args).output()).await;
             match output {
-                Ok(o) if o.status.success() => {
+                Ok(Ok(o)) if o.status.success() => {
                     state.progress_map.write().await.insert(status_key, 100.0);
                     json_response(serde_json::json!({"success": true, "path": final_path.to_string_lossy()}), StatusCode::OK, origin)
                 }
                 _ => {
-                    let err = output
-                        .ok()
-                        .map(|o| String::from_utf8_lossy(&o.stderr).trim().to_string())
-                        .unwrap_or_else(|| "Erreur vidéo".into());
+                    let err = match output {
+                        Ok(Ok(o)) => {
+                            let stderr = String::from_utf8_lossy(&o.stderr).trim().to_string();
+                            if stderr.is_empty() { "Erreur de téléchargement vidéo".into() } else { stderr }
+                        }
+                        Ok(Err(e)) => format!("Impossible de lancer yt-dlp: {}", e),
+                        Err(_) => "Timeout du téléchargement vidéo (10 min)".into(),
+                    };
+                    state.progress_map.write().await.remove(&status_key);
                     json_response(serde_json::json!({"success": false, "error": err}), StatusCode::INTERNAL_SERVER_ERROR, origin)
                 }
             }
@@ -2519,22 +2547,23 @@ async fn download_audio_with_ffmpeg(
             cmd.env("LD_LIBRARY_PATH", ld);
         }
     }
-    let conv = cmd.output().await;
+    let conv = tokio::time::timeout(Duration::from_secs(120), cmd.output()).await;
     let _ = std::fs::remove_file(&temp_path);
     match conv {
-        Ok(o) if o.status.success() => {
+        Ok(Ok(o)) if o.status.success() => {
             state.progress_map.write().await.insert(status_key.to_string(), 100.0);
             json_response(serde_json::json!({"success": true, "path": final_path.to_string_lossy()}), StatusCode::OK, origin)
         }
         _ => {
             let err = match conv {
-                Ok(o) => {
+                Ok(Ok(o)) => {
                     let code = o.status.code().map(|c| c.to_string()).unwrap_or_else(|| "?".into());
                     let stdout = String::from_utf8_lossy(&o.stdout).trim().to_string();
                     let stderr = String::from_utf8_lossy(&o.stderr).trim().to_string();
                     format!("ffmpeg exit={} stdout={} stderr={}", code, stdout, stderr)
                 }
-                Err(e) => format!("ffmpeg spawn: {}", e),
+                Ok(Err(e)) => format!("ffmpeg spawn: {}", e),
+                Err(_) => "Timeout de la conversion MP3 (120s)".into(),
             };
             let _ = std::fs::remove_file(&final_path);
             state.progress_map.write().await.remove(status_key);

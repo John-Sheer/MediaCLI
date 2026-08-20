@@ -91,3 +91,45 @@ export const friendlyError = (msg) => {
 
 export const SERVER_UNREACHABLE =
   "Impossible de contacter le serveur";
+
+// Transforme un message d'erreur (souvent technique) en une info courte :
+// { code, message } avec une phrase simple, ex. { code: "RÉSEAU", message: "erreur réseau" }.
+export function downloadErrorInfo(msg) {
+  const s = (msg || "").toString();
+  if (!s || /impossible de contacter|fetch failed|network error|error sending request|connect|timed out|timeout|dns/i.test(s)) {
+    return { code: "RÉSEAU", message: "erreur réseau" };
+  }
+  if (/certificate|ssl|tls/i.test(s)) {
+    return { code: "CERT", message: "erreur de certificat" };
+  }
+  const http = s.match(/HTTP[:\s]*(\d{3})/i);
+  if (http) {
+    const h = Number(http[1]);
+    if (h === 403 || h === 404) return { code: String(h), message: "contenu indisponible" };
+    if (h === 429) return { code: "429", message: "trop de requêtes" };
+    if (h >= 500) return { code: String(h), message: "erreur serveur" };
+    return { code: String(h), message: "erreur de téléchargement" };
+  }
+  if (/permission|refus|denied|deny/i.test(s)) {
+    return { code: "PERM", message: "accès aux fichiers refusé" };
+  }
+  if (/no space left|disk full|quota exceeded|ENOSPC/i.test(s)) {
+    return { code: "STOCK", message: "espace insuffisant" };
+  }
+  if (/écriture|write error|cannot write/i.test(s)) {
+    return { code: "ECR", message: "erreur d'écriture" };
+  }
+  if (/conversion|encode|decoder|codec|invalid data|mp3/i.test(s)) {
+    return { code: "CONV", message: "erreur de conversion" };
+  }
+  if (/aucun flux|unavailable|not available|introuvable|video id|disponible/i.test(s)) {
+    return { code: "VIDEO", message: "vidéo indisponible" };
+  }
+  if (/invalide|invalid/i.test(s)) {
+    return { code: "REQ", message: "requête invalide" };
+  }
+  if (/téléchargement|download|yt.?dl|fichier temporaire/i.test(s)) {
+    return { code: "DL", message: "erreur de téléchargement" };
+  }
+  return { code: "ERR", message: "erreur inconnue" };
+}

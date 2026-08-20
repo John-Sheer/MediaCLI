@@ -1,4 +1,4 @@
-import { api, friendlyError, SERVER_UNREACHABLE } from "../api/client.js";
+import { api, friendlyError, SERVER_UNREACHABLE, downloadErrorInfo } from "../api/client.js";
 import { invoke } from "@tauri-apps/api/core";
 import { useStore } from "./store.jsx";
 
@@ -16,6 +16,7 @@ export function useActions() {
   const { state, dispatch } = useStore();
 
   let warmToken = 0;
+  let openFolderSeq = 0;
 
   const warmStreams = async (results) => {
     if (state.torActive) return;
@@ -85,18 +86,18 @@ export function useActions() {
   const download = async (song, format) => {
     const key = `${song.id}-${format}`;
     dispatch({ type: "DOWNLOAD_STATUS", key, status: "downloading" });
-    dispatch({ type: "SET_ERROR", error: null });
+    dispatch({ type: "DOWNLOAD_ERROR", key, info: null });
     try {
       const { data } = await api.download(song.id, song.title, format);
       if (data.success) dispatch({ type: "DOWNLOAD_STATUS", key, status: "done" });
       else {
         dispatch({ type: "DOWNLOAD_STATUS", key, status: "error" });
-        dispatch({ type: "SET_ERROR", error: data.error || "Échec du téléchargement" });
+        dispatch({ type: "DOWNLOAD_ERROR", key, info: downloadErrorInfo(data.error) });
       }
     } catch (err) {
       console.error("Erreur de téléchargement :", err);
       dispatch({ type: "DOWNLOAD_STATUS", key, status: "error" });
-      dispatch({ type: "SET_ERROR", error: SERVER_UNREACHABLE });
+      dispatch({ type: "DOWNLOAD_ERROR", key, info: downloadErrorInfo(SERVER_UNREACHABLE) });
     }
   };
 
@@ -239,9 +240,11 @@ export function useActions() {
   };
 
   const openFolder = async (path) => {
+    const seq = ++openFolderSeq;
     dispatch({ type: "LOCAL_OPEN_FOLDER", path });
     try {
       const [a, v] = await Promise.all([api.listFolder(path, "audio"), api.listFolder(path, "video")]);
+      if (seq !== openFolderSeq) return;
       const err = a.error || v.error;
       if (err) {
         dispatch({ type: "LOCAL_FOLDER_ERROR", error: err });
@@ -250,6 +253,7 @@ export function useActions() {
       const merged = mergeFolderFiles([a.files, v.files]);
       dispatch({ type: "LOCAL_FILES_LOADED", files: merged });
     } catch {
+      if (seq !== openFolderSeq) return;
       dispatch({ type: "LOCAL_FOLDER_ERROR", error: "Impossible de lister le dossier." });
     }
   };

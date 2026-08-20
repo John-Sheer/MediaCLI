@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Play, Pause, SkipBack, SkipForward, X, ChevronDown, ChevronUp, Maximize2, Minimize2, Loader2, RefreshCw, Volume2, VolumeX, Shuffle, Repeat, Repeat1, Music, Video, ListMusic, PictureInPicture2, SlidersHorizontal, Timer, Mic, Forward, Rewind } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Play, Pause, SkipBack, SkipForward, X, ChevronDown, ChevronUp, Maximize2, Minimize2, Loader2, RefreshCw, Volume2, VolumeX, Shuffle, Repeat, Repeat1, Music, Video, ListMusic, SlidersHorizontal, Timer, Mic, Forward, Rewind, Download } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { onThumbbarAction } from "../lib/thumbbar.js";
 import useSwipeGesture from "../hooks/useSwipeGesture";
 
 const IS_ANDROID = /android/i.test(navigator.userAgent || "");
@@ -56,7 +57,7 @@ function VolumeControl({ volume, onMute, onVolume, showVolume, showVolumeNow, sh
 }
 
 
-export default function Player({ currentSong, streamUrl, onClose, onNext, onPrevious, onEnded, shuffle, repeatMode, onToggleShuffle, onCycleRepeat, onFullscreenChange, playlist = [], onPlayAt, resumeTime = 0, playlists = {}, onSaveQueue, onPlayPlaylist, onDeletePlaylist, onRemoveFromPlaylist, showQueue = false, onToggleQueue }) {
+export default function Player({ currentSong, streamUrl, onClose, onNext, onPrevious, onEnded, shuffle, repeatMode, onToggleShuffle, onCycleRepeat, onFullscreenChange, playlist = [], onPlayAt, resumeTime = 0, playlists = {}, onSaveQueue, onPlayPlaylist, onDeletePlaylist, onRemoveFromPlaylist, showQueue = false, onToggleQueue, onDownload }) {
   const videoRef = useRef(null);
   const playerRef = useRef(null);
   const rafRef = useRef(null);
@@ -79,7 +80,12 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
   const [hoverTime, setHoverTime] = useState(0);
   const [hoverPct, setHoverPct] = useState(0);
   const [showHoverTime, setShowHoverTime] = useState(false);
-  const [volume, setVolume] = useState(0.4);
+  const [volume, setVolume] = useState(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem("mediacli-settings") || "{}");
+      return s.defaultVolume ?? 0.4;
+    } catch { return 0.4; }
+  });
   const [videoMuted, setVideoMuted] = useState(true);
   const [showVolume, setShowVolume] = useState(false);
   const [showVolPct, setShowVolPct] = useState(false);
@@ -89,7 +95,17 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
   const seekRef = useRef(null);
   const resumePosRef = useRef(0);
   const pausePosRef = useRef(0);
-  const [pos, setPos] = useState(() => ({ x: window.innerWidth - 400, y: Math.max(20, window.innerHeight - 340) }));
+  const userPauseRef = useRef(false);
+  const currentSongRef = useRef(currentSong);
+  useEffect(() => { currentSongRef.current = currentSong; }, [currentSong]);
+  const playingRef = useRef(playing);
+  useEffect(() => { playingRef.current = playing; }, [playing]);
+  const [pos, setPos] = useState(() => {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    if (w < 640) return { x: (w - Math.min(384, w - 24)) / 2, y: Math.max(12, h - 380) };
+    return { x: w - 400, y: Math.max(20, h - 340) };
+  });
   const dragging = useRef(false);
   const dragOffset = useRef({ x: 0, y: 0 });
   const [sleepMinutes, setSleepMinutes] = useState(0);
@@ -247,6 +263,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
         sleepEndRef.current = 0;
         if (videoRef.current && !videoRef.current.paused) {
           // VRAIE pause (la vidéo se fige) à l'arrivée du minuteur sommeil.
+          userPauseRef.current = true;
           pausePosRef.current = videoRef.current.currentTime || 0;
           videoRef.current.pause();
           setPlaying(false);
@@ -281,14 +298,15 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       pausePosRef.current = 0;
       setBuffering(true);
       setStreamError(null);
-      setPlaying(false);
       setProgress(0);
       setDuration(0);
       clearLoadTimer();
+      setPlaying(false);
       loadTimerRef.current = setTimeout(() => setStreamError("Le flux met trop de temps à répondre."), 90000);
       return () => clearLoadTimer();
     }
     if (!streamUrl && videoRef.current) {
+      userPauseRef.current = true;
       videoRef.current.pause();
       videoRef.current.removeAttribute("src");
       videoRef.current.load();
@@ -301,13 +319,8 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
   }, [streamUrl]);
 
   useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.volume = volume;
-    }
-  }, [streamUrl, volume]);
-
-  useEffect(() => {
     return () => {
+      userPauseRef.current = true;
       if (videoRef.current) {
         videoRef.current.pause();
         videoRef.current.removeAttribute("src");
@@ -318,7 +331,8 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
 
   useEffect(() => {
     const onVisibility = () => {
-      if (document.visibilityState === "hidden" && videoRef.current && !videoRef.current.paused) {
+      if (!IS_ANDROID && document.visibilityState === "hidden" && videoRef.current && !videoRef.current.paused) {
+        userPauseRef.current = true;
         pausePosRef.current = videoRef.current.currentTime || 0;
         videoRef.current.pause();
         setPlaying(false);
@@ -358,6 +372,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     if (playing) {
       // VRAIE pause : la vidéo se fige, le son s'arrête avec elle.
       const v = videoRef.current;
+      userPauseRef.current = true;
       pausePosRef.current = v.currentTime || 0;
       v.pause();
       setPlaying(false);
@@ -368,6 +383,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     const ctx = audioCtxRef.current;
     if (ctx && ctx.state === "suspended") ctx.resume().catch(() => {});
     kickAudioFocus();
+    userPauseRef.current = false;
     if (v.paused || v.ended || !v.src) {
       // Tentative 1 : simple play() — fiable sur la plupart des appareils,
       // ne provoque pas d'interruption/rechargement du flux.
@@ -483,12 +499,20 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
   const handleVolumeRef = useRef(handleVolume);
   const toggleMuteRef = useRef(toggleMute);
   const fullscreenRef = useRef(fullscreen);
+  const onNextRef = useRef(onNext);
+  const onPreviousRef = useRef(onPrevious);
+  const onCloseRef = useRef(onClose);
+  const onEndedRef = useRef(onEnded);
 
   useEffect(() => { togglePlayRef.current = togglePlay; }, [togglePlay]);
   useEffect(() => { handleSeekRef.current = handleSeek; }, [handleSeek]);
   useEffect(() => { handleVolumeRef.current = handleVolume; }, [handleVolume]);
   useEffect(() => { toggleMuteRef.current = toggleMute; }, [toggleMute]);
   useEffect(() => { fullscreenRef.current = fullscreen; }, [fullscreen]);
+  useEffect(() => { onNextRef.current = onNext; }, [onNext]);
+  useEffect(() => { onPreviousRef.current = onPrevious; }, [onPrevious]);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+  useEffect(() => { onEndedRef.current = onEnded; }, [onEnded]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -577,15 +601,6 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     const m = Math.floor(t / 60);
     const s = Math.floor(t % 60);
     return `${m}:${s.toString().padStart(2, "0")}`;
-  };
-
-  const togglePip = () => {
-    const v = videoRef.current;
-    if (!v) return;
-    try {
-      if (document.pictureInPictureElement) document.exitPictureInPicture();
-      else v.requestPictureInPicture();
-    } catch {}
   };
 
   const fetchLyrics = async (title, artist) => {
@@ -756,18 +771,55 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     onFullscreenChange?.(fullscreen);
   }, [fullscreen, onFullscreenChange]);
 
-  // Thumbbar: update buttons when playback state changes
+  // Arrière-plan : signale l'état de lecture réel au backend
+  // (boutons thumbbar + notification média).
   useEffect(() => {
-    invoke("set_thumbbar_playing", { playing: !!currentSong }).catch(() => {});
-  }, [currentSong]);
+    const v = videoRef.current;
+    const dur = v && Number.isFinite(v.duration) ? v.duration : 0;
+    const pos = v && Number.isFinite(v.currentTime) ? v.currentTime : 0;
+    invoke("set_playing_state", {
+      playing,
+      title: currentSong?.title ?? "",
+      artist: currentSong?.channel ?? "",
+      artwork: currentSong?.thumbnail
+        ? "http://127.0.0.1:8787/thumb?url=" + encodeURIComponent(currentSong.thumbnail)
+        : "",
+      position_ms: Math.round(pos * 1000),
+      duration_ms: Math.round(dur * 1000),
+    }).catch(() => {});
+  }, [playing, currentSong]);
 
-  // Thumbbar: listen for button clicks from taskbar
+  // Notification média : mise à jour périodique de la position pour la
+  // barre de progression dans la notification Android.
   useEffect(() => {
-    const unlisten = listen("thumbbar-action", (e) => {
-      if (e.payload === "toggle-play") togglePlay();
+    if (!IS_ANDROID || !playing) return;
+    const id = setInterval(() => {
+      const v = videoRef.current;
+      if (v && v.src && !v.paused) {
+        const dur = Number.isFinite(v.duration) ? v.duration : 0;
+        const pos = Number.isFinite(v.currentTime) ? v.currentTime : 0;
+        if (dur > 0) {
+          invoke("update_position", {
+            position_ms: Math.round(pos * 1000),
+            duration_ms: Math.round(dur * 1000),
+          }).catch(() => {});
+        }
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [playing]);
+
+  // Thumbbar / notification média : actions provenant du système (clavier
+  // média, boutons de la notification du BackgroundService, etc.).
+  useEffect(() => {
+    return onThumbbarAction((action) => {
+      if (action === "toggle-play") togglePlayRef.current();
+      else if (action === "next") onNextRef.current?.();
+      else if (action === "previous") onPreviousRef.current?.();
+      else if (action === "stop") onCloseRef.current?.();
+      else if (action === "ended") onEndedRef.current?.();
     });
-    return () => { unlisten.then((fn) => fn()).catch(() => {}); };
-  }, [playing, currentSong, streamError, buffering]);
+  }, []);
 
   useEffect(() => {
     if (!currentSong) return;
@@ -796,25 +848,25 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
 
   const poster = currentSong.thumbnail || undefined;
 
-  return (<>
+  return createPortal(<>
     <div
       ref={playerRef}
       data-player-root
       tabIndex={0}
-      style={fullscreen ? {} : { position: 'fixed', left: pos.x, top: pos.y }}
-      onTouchStart={swipeHandlers.handleTouchStart}
-      onTouchEnd={swipeHandlers.handleTouchEnd}
+      style={fullscreen ? {} : { position: 'fixed', left: pos.x, top: pos.y, zIndex: 9998 }}
+      onTouchStart={fullscreen ? swipeHandlers.handleTouchStart : undefined}
+      onTouchEnd={fullscreen ? swipeHandlers.handleTouchEnd : undefined}
       className={`
         z-50 transition-[width,height,opacity,transform] duration-300
           ${fullscreen
             ? `fixed inset-0 z-[9999] bg-black flex flex-col ${!showFsControls ? 'cursor-none' : ''}`
             : minimized
-              ? 'bg-transparent w-[min(20rem,calc(100vw-24px))] border border-accent-red/60 shadow-[0_0_18px_-6px_rgba(200,30,58,0.4)]'
-              : 'w-[min(24rem,calc(100vw-24px))] max-h-[calc(100dvh-16px)] overflow-y-auto scroll-modern overscroll-contain border border-accent-red/60 shadow-[0_0_22px_-6px_rgba(200,30,58,0.4)]'
+              ? 'bg-black w-[min(20rem,calc(100vw-24px))] border border-accent-red/60 shadow-[0_0_18px_-6px_rgba(200,30,58,0.4)]'
+              : 'bg-black w-[min(24rem,calc(100vw-24px))] max-h-[calc(100dvh-16px)] border border-accent-red/60 shadow-[0_0_22px_-6px_rgba(200,30,58,0.4)]'
           }
       `}
     >
-      <div className={fullscreen ? 'flex-1 bg-black relative' : minimized ? 'hidden' : 'relative aspect-video min-h-[180px]'} onMouseMove={showControlsTemp}>
+      <div className={fullscreen ? 'flex-1 bg-black relative' : minimized ? 'hidden' : 'relative aspect-video min-h-[180px] overflow-auto overscroll-contain'} onMouseMove={showControlsTemp}>
         <video
           key={streamUrl}
           ref={videoRef}
@@ -823,7 +875,11 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
           autoPlay
           muted={videoMuted}
           playsInline
-          onPause={() => setPlaying(false)}
+          onPause={(e) => {
+            if (!userPauseRef.current) {
+              setPlaying(false);
+            }
+          }}
           className={`bg-black cursor-pointer ${fullscreen ? 'absolute inset-0 w-full h-full object-cover' : 'max-h-[45vh] w-full object-cover aspect-video'}`}
           onTimeUpdate={(e) => {
             if (isSeeking) return;
@@ -837,9 +893,9 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
               } catch {}
             }
           }}
-          onLoadedMetadata={(e) => { clearLoadTimer(); setDuration(e.target.duration); setBuffering(false); setStreamError(null); setHasVideo(e.target.videoWidth > 0); if (videoRef.current) { videoRef.current.volume = volume; videoRef.current.playbackRate = pitch; } const rp = resumePosRef.current > 0 ? resumePosRef.current : resumeTime; if (rp > 1 && videoRef.current) { try { videoRef.current.currentTime = rp; } catch {} } resumePosRef.current = 0; if (videoRef.current) { setVideoMuted(true); videoRef.current.play().then(() => { setVideoMuted(false); setPlaying(true); }).catch(() => setBuffering(false)); } }}
+          onLoadedMetadata={(e) => { clearLoadTimer(); setDuration(e.target.duration); setBuffering(false); setStreamError(null); setHasVideo(e.target.videoWidth > 0); if (videoRef.current) { videoRef.current.volume = volume; videoRef.current.playbackRate = pitch; } const rp = resumePosRef.current > 0 ? resumePosRef.current : resumeTime; if (rp > 1 && videoRef.current) { try { videoRef.current.currentTime = rp; } catch {} } resumePosRef.current = 0; const dur2 = Number.isFinite(e.target.duration) ? e.target.duration : 0; if (IS_ANDROID && dur2 > 0) { invoke("update_position", { position_ms: Math.round((e.target.currentTime || 0) * 1000), duration_ms: Math.round(dur2 * 1000) }).catch(() => {}); } if (videoRef.current) { setVideoMuted(true); videoRef.current.play().then(() => { setVideoMuted(false); setPlaying(true); }).catch(() => setBuffering(false)); } }}
           onWaiting={() => setBuffering(true)}
-          onPlaying={() => { clearLoadTimer(); setPlaying(true); setBuffering(false); setStreamError(null); }}
+          onPlaying={() => { clearLoadTimer(); userPauseRef.current = false; setPlaying(true); setBuffering(false); setStreamError(null); }}
           onEnded={() => {
             if (repeatMode === "one" && videoRef.current) {
               videoRef.current.currentTime = 0;
@@ -853,7 +909,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
         />
         {!hasVideo && (
           <>
-            <div className="absolute inset-0 z-0 bg-surface" />
+            <div className="absolute inset-0 z-0 bg-black" />
             <div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-none px-4">
               <Music className="w-10 h-10 text-accent-red/90 mb-3 drop-shadow-[0_0_12px_rgba(255,59,92,0.5)]" />
               <p className="text-sm font-semibold text-white/90 text-center line-clamp-2 leading-snug drop-shadow-lg">{currentSong?.title}</p>
@@ -931,11 +987,9 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
                   size={17}
                   sliderH={20}
                 />
-                {hasVideo && (
-                  <button onClick={togglePip} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors" title="Picture-in-Picture">
-                    <PictureInPicture2 size={17} />
-                  </button>
-                )}
+                <button onClick={() => { if (currentSong && onDownload) onDownload(currentSong, "video"); }} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors" title="Télécharger (vidéo)">
+                  <Download size={17} />
+                </button>
               </div>
             </div>
           </div>
@@ -1058,7 +1112,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
 
       {fullscreen && (
         <div className="absolute inset-0 z-20" onMouseMove={handleFsMouseMove}>
-          <div className={`absolute top-0 left-0 right-0 pt-3 pb-8 px-4 transition-opacity duration-200 pointer-events-none ${showFsControls ? 'opacity-100' : 'opacity-0'}`}>
+          <div style={{ paddingTop: `calc(var(--sat, 24px) + 12px)` }} className={`absolute top-0 left-0 right-0 pb-8 px-4 transition-opacity duration-200 pointer-events-none ${showFsControls ? 'opacity-100' : 'opacity-0'}`}>
             <div className="pointer-events-auto flex items-center justify-between">
               <div className="min-w-0 flex-1 mr-4">
                 <p className="text-sm font-medium text-white/90 truncate">{currentSong?.title}</p>
@@ -1069,7 +1123,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
               </button>
             </div>
           </div>
-          <div className={`absolute bottom-0 left-0 right-0 pt-12 pb-4 px-4 transition-opacity duration-200 pointer-events-none ${showFsControls ? 'opacity-100' : 'opacity-0'}`}>
+          <div style={{ paddingBottom: `calc(var(--sab, 20px) + 16px)` }} className={`absolute bottom-0 left-0 right-0 pt-12 px-4 transition-opacity duration-200 pointer-events-none ${showFsControls ? 'opacity-100' : 'opacity-0'}`}>
             <div className="pointer-events-auto">
               <div className="relative mb-2">
                 <input type="range" min={0} max={duration || 0} value={progress} onInput={handleSeek} onMouseDown={handleSeekStart} onMouseUp={handleSeekEnd} onMouseMove={handleSeekHover} onMouseLeave={handleSeekLeave} className="w-full cursor-pointer" style={{ background: `linear-gradient(to right, #c81e3a ${duration ? (progress/duration)*100 : 0}%, rgba(225,29,72,0.25) ${duration ? (progress/duration)*100 : 0}%)` }} />
@@ -1106,12 +1160,10 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
                   size={16}
                   sliderH={20}
                 />
-                {hasVideo && (
-                  <button onClick={togglePip} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors" title="Picture-in-Picture">
-                    <PictureInPicture2 size={18} />
-                  </button>
-                )}
-                {lyricLines.length > 0 && (
+                 <button onClick={() => { if (currentSong && onDownload) onDownload(currentSong, "video"); }} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors" title="Télécharger (vidéo)">
+                   <Download size={18} />
+                 </button>
+                 {lyricLines.length > 0 && (
                   <button onClick={() => setShowLyrics(v => !v)} className={`bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${showLyrics ? "text-accent-red" : "text-white/85 hover:text-white"}`} title="Paroles synchronisées">
                     <Mic size={18} />
                   </button>
@@ -1132,7 +1184,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
             let activeIdx = 0;
             for (let i = 0; i < lyricLines.length; i++) if (progress >= lyricLines[i].t) activeIdx = i;
             return (
-              <div className="absolute left-0 right-0 bottom-28 z-10 flex justify-center px-6 pointer-events-none">
+              <div className="absolute left-0 right-0 z-10 flex justify-center px-6 pointer-events-none" style={{ bottom: `calc(var(--sab, 20px) + 112px)` }}>
                 <div className="max-w-2xl text-center">
                   {lyricLines.map((l, i) => {
                     const near = i >= activeIdx - 2 && i <= activeIdx + 2;
@@ -1150,7 +1202,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
           {showFsPlaylist && playlist.length > 0 && (() => {
             const currentId = currentSong?.id;
             return (
-              <div className="absolute left-0 right-0 bottom-28 z-10 flex justify-center px-4 pointer-events-none">
+              <div style={{ bottom: `calc(var(--sab, 20px) + 112px)` }} className="absolute left-0 right-0 z-10 flex justify-center px-4 pointer-events-none">
                 <div onMouseMove={(e) => e.stopPropagation()} onScroll={(e) => e.stopPropagation()} className={`max-w-lg w-full max-h-[40vh] overflow-y-auto scroll-modern rounded-2xl bg-black/70 backdrop-blur-md border border-white/[0.08] pointer-events-auto p-3 ${!showFsControls ? 'cursor-none' : ''}`}>
                   <p className="text-xs uppercase tracking-wider text-white/80 mb-2">File d'attente ({playlist.length})</p>
                   {playlist.map((track, i) => {
@@ -1175,7 +1227,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
             );
           })()}
           {eqOpen && (
-            <div className="absolute right-4 bottom-28 z-20 w-72 p-4 rounded-2xl bg-black/70 backdrop-blur-md border border-white/[0.08] pointer-events-auto">
+            <div style={{ bottom: `calc(var(--sab, 20px) + 112px)` }} className="absolute right-4 z-20 w-72 p-4 rounded-2xl bg-black/70 backdrop-blur-md border border-white/[0.08] pointer-events-auto">
               <p className="text-xs uppercase tracking-wider text-white/80 mb-3">Égaliseur & tonalité</p>
               {IS_ANDROID && (
                 <p className="text-[10px] text-white/60 mb-3 leading-snug">
@@ -1219,7 +1271,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
             </div>
           )}
           {showSleep && (
-            <div className="absolute left-4 bottom-28 z-20 w-56 p-4 rounded-2xl bg-black/70 backdrop-blur-md border border-white/[0.08] pointer-events-auto">
+            <div style={{ bottom: `calc(var(--sab, 20px) + 112px)` }} className="absolute left-4 z-20 w-56 p-4 rounded-2xl bg-black/70 backdrop-blur-md border border-white/[0.08] pointer-events-auto">
               <p className="text-xs uppercase tracking-wider text-white/80 mb-3">Minuterie de sommeil</p>
               <div className="grid grid-cols-2 gap-2">
                 {[15, 30, 45, 60].map((m) => (
@@ -1264,5 +1316,5 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
         </div>
       )}
     </div>
-  </>);
+  </>, document.body);
 }

@@ -40,8 +40,8 @@ function ErrorState({ error, onRetry }) {
   );
 }
 
-export function StreamingView({ state, onSearch, onPlay, onDownload, onQueryChange, onMenuToggle, onAddToPlaylist, onCreateAndAdd, onOpenDownloads, onResume }) {
-  const { results, loading, searchError, query, menuSongId, downloadStatus, downloadProgress, playlists, currentSong } = state;
+export function StreamingView({ state, onSearch, onPlay, onDownload, onQueryChange, onMenuToggle, onAddToPlaylist, onCreateAndAdd, onOpenDownloads, onResume, onAuthorize }) {
+  const { results, loading, searchError, query, menuSongId, downloadStatus, downloadProgress, downloadErrors, playlists, currentSong } = state;
   const centered = results.length === 0 && !loading && !searchError;
   const activeCount = Object.values(downloadStatus).filter((s) => s === "downloading").length;
 
@@ -111,12 +111,17 @@ export function StreamingView({ state, onSearch, onPlay, onDownload, onQueryChan
                   audio: downloadProgress[`${song.id}-audio`],
                   video: downloadProgress[`${song.id}-video`],
                 }}
+                errors={{
+                  audio: downloadErrors[`${song.id}-audio`],
+                  video: downloadErrors[`${song.id}-video`],
+                }}
                 menuOpen={menuSongId === song.id}
                 onMenuToggle={(id) => onMenuToggle(id)}
                 playlists={playlists}
                 onAddToPlaylist={onAddToPlaylist}
                 onCreateAndAdd={onCreateAndAdd}
                 isPlaying={currentSong?.id === song.id}
+                onAuthorize={onAuthorize}
               />
             ))}
           </div>
