@@ -28,7 +28,7 @@ tauri_dev_log.txt
 # OS
 .DS_Store
 Thumbs.db
-desktop.ini
+desktop.xml
 
 # Deno
 deno.lock
@@ -37,3 +37,14 @@ deno.lock
 .env
 .env.*
 .env.deploy
+
+# Firebase cache
+.firebase/
+
+# Internal
+.opencode/
+RAPPORT_SECURITE.md
+hosting/updates/*.bak
+server/
+src-tauri/.cargo/
+src-tauri/resources/

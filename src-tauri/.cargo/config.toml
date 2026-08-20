@@ -1,6 +1,0 @@
-[target.aarch64-linux-android]
-linker = "C:\\Users\\LENOVO\\AppData\\Local\\Android\\Sdk\\ndk\\28.2.13676358\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\aarch64-linux-android35-clang.cmd"
-rustflags = [
-  "-C", "link-arg=-Wl,-z,max-page-size=16384",
-  "-C", "link-arg=-Wl,-z,common-page-size=16384",
-]
