@@ -2,14 +2,14 @@
     "platforms":  {
                       "windows-x86_64":  {
                                              "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.12/MediaCLI-Setup.exe",
-                                             "signature":  "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUhOcFoyNWhkSFZ5WlNCbWNtOXRJSFJoZFhKcElITmxZM0psZENCclpYa0tVbFZSVDBObWJFbFZWWEIxYVVWbFV6WjBRMkkyWVhWa09UVlBTMlpyZUM4d1ZUUXljekJIYlZBeVZtSkdjRmhOV25wWlprODRNV3hvWkVsWVdVOHpTbTlVUkhCU2JpdE5jR2RSYWxZNGJUWlhlblZWVEdkSFYyUldaa1IyV0dKdE5XZDNQUXAwY25WemRHVmtJR052YlcxbGJuUTZJSFJwYldWemRHRnRjRG94TnpnMlFUWXhPVGM0Q1dacGJHVTZUV1ZrYVdGRFRFbGZNQzR4TGpFeVgzZzJOQzF6WlhSMWNDNWxlR1VLTkZWWGJWZFFRazg0YkZOQ05uRjBTbmM1ZVRFNFUwMXZZa3BUWWs5eVNVbFhTazVCVldKNmMzZGlhaTkxUm5kcVZVRmFRM2RrUVhKc1JVRktOVWRoTUhSamVHZHZNbXh4VG14b1pFUllNamxaTDNGaFEzYzlQUW89"
+                                             "signature":  "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUhOcFoyNWhkSFZ5WlNCbWNtOXRJSFJoZFhKcElITmxZM0psZENCclpYa0tVbFZSVDBObWJFbFZWWEIxYVVWbFV6WjBRMkkyWVhWa09UVlBTMlpyZUM0d1ZUUXljekJIYlZBeVZtSkdjRmhOV25wWlprODRNV3hvWkVsWVdVOHpTbTlVUkhCU2JpdE5jR2RSYWxZNGJUWlhlblZWVEdkSFYyUldaa1IyV0dKdE5XZDNQUXAwY25WemRHVmtJR052YlcxbGJuUTZJSFJwYldWemRHRnRjRG94TnpnMlFUWXhPVGM0Q1dacGJHVTZUV1ZrYVdGRFRFbGZNQzR4TGpFeVgzZzJOQzF6WlhSMWNDNWxlR1VLTkZWWGJWZFFRazg0YkZOQ05uRjBTbmM1ZVRFNFUwMXZZa3BUWWs5eVNVbFhTazVCVldKNmMzZGlhaTkxUm5kcVZVRmFRM2RrUVhKc1JVRktOVWRoTUhSamVHZHZNbXh4VG14b1pFUllNamxaTDNGaFEzYzlQUW89"
                                          },
                       "android-arm64":  {
-                                            "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.12/MediaCLI.apk",
-                                            "signature":  "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUhOcFoyNWhkSFZ5WlNCbWNtOXRJSFJoZFhKcElITmxZM0psZENCclpYa0tVbFZSVDBObWJFbFZWWEIxYVUxMGEycElXWEo2VTJSQ1lXVlFaM2hDYW5kNVZqZElWMEl2YkZaWE0xaFhhMFZNYTFkcmEybFhiMWRxZG5sek1Vd3lUVGx3VVVOMWRXTkVhV1pIYnpKUlMxaHVNRTVEZWxwcGRVWXljR0pxTVdkVU5rRTBQUXAwY25WemRHVmtJR052YlcxbGJuUTZJSFJwYldWemRHRnRjRG94TnpnMlFUWXhPVGM0Q1dacGJHVTZUV1ZrYVdGRFRFa3VZWEJyQ2k5NlJtVm9Welo1VXpGMk1XMW5iQ3RIVDI5dlJucHVhVzlxTkRGMFpsSllWRlZvYzJ4VE5IbFFWR0pSUzFSR2RtTXZaVFZuVjIxVU5IbE9XbTkxVUdZd1RHd3ZXbk51YzJ4RFpXd3dkR0ZZWTFweFdrSkJQVDBL"
+                                            "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.14/MediaCLI.apk",
+                                            "signature":  ""
                                         }
                   },
-    "pub_date":  "2026-08-12T19:12:58Z",
-    "version":  "0.1.12",
-    "notes":  "Android : fix du frontend embarqu\u00e9 (modal VPN, recherche directe) et t\u00e9l\u00e9chargements audio/vid\u00e9o fiables. Windows : mises \u00e0 jour depuis l\u0027application, stabilit\u00e9 et correctifs."
+    "pub_date":  "2026-08-20T00:00:00Z",
+    "version":  "0.1.14",
+    "notes":  "Android : anti-cache WebView (5 couches), footer compact, logo réduit 56px, PiP retiré, téléchargement vidéo, playlists locales corrigées. Scan et téléchargements fiables."
 }
