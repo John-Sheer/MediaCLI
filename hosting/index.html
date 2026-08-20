@@ -213,13 +213,13 @@
       position:relative;display:flex;align-items:center;justify-content:center;
       width:44px;height:44px;border-radius:50%;
       background:rgba(255,59,92,.14);
-      border:1px solid rgba(255,59,92,.4);color:var(--red);
+      border:none;color:var(--red);
       transition:transform .35s ease,box-shadow .35s ease,border-color .35s ease;
     }
     .cl-more:hover .cl-more-dot{transform:translateY(2px);border-color:var(--red);box-shadow:0 8px 28px rgba(255,59,92,.4)}
     .cl-more-dot::after{
       content:'';position:absolute;inset:-5px;border-radius:50%;
-      border:1px solid rgba(255,59,92,.35);
+      border:none;
       animation:clPulse 2.6s ease-out infinite;
     }
     @keyframes clPulse{0%{transform:scale(.92);opacity:.9}70%{transform:scale(1.18);opacity:0}100%{opacity:0}}
@@ -401,19 +401,19 @@
     <p class="sec-label">Nouveautés</p>
     <div class="cl-item">
       <div class="cl-date">v0.1.14 — Août 2026</div>
-      <div class="cl-notes">Android : anti-cache WebView (5 couches), footer compact, logo réduit, PiP retiré, téléchargement vidéo, playlists locales corrigées. Scan et téléchargements fiables.</div>
+      <div class="cl-notes">Interface allégée, téléchargement vidéo, playlists locales corrigées.</div>
     </div>
     <div class="cl-item">
       <div class="cl-date">v0.1.13 — Août 2026</div>
-      <div class="cl-notes">Correctifs intermédiaires : scan local, téléchargements timeout, panneau Paramètres, playlists avec navigation par dossiers, tray desktop redessiné, Player draggable mobile, native MediaPlayer supprimé.</div>
+      <div class="cl-notes">Scan et téléchargements stabilisés, paramètres, playlists par dossiers.</div>
     </div>
     <div class="cl-item">
       <div class="cl-date">v0.1.12 — Août 2026</div>
-      <div class="cl-notes">Android : correction du frontend embarqué (modal VPN Protection de la vie privée, recherche directe), téléchargements audio/vidéo fiables vers MediaCLI (Audio, Video). Windows : mises à jour depuis l'application, stabilité et correctifs.</div>
+      <div class="cl-notes">Serveur intégré, protection VPN en un clic, recherche directe.</div>
     </div>
     <div class="cl-item">
       <div class="cl-date">v0.1.11 — Août 2026</div>
-      <div class="cl-notes">Correctif critique Android : crash TLS au téléchargement de l'APK corrigé. Mise à jour in-app fonctionnelle de bout en bout (téléchargement, autorisation et installation).</div>
+      <div class="cl-notes">Correctif Android et mise à jour in-app.</div>
     </div>
     <button class="cl-more" id="clMore" aria-expanded="false" aria-controls="clOlder">
       <span class="cl-more-core">
@@ -426,47 +426,25 @@
     <div class="cl-older" id="clOlder">
     <div class="cl-item">
       <div class="cl-date">v0.1.10 — Août 2026</div>
-      <div class="cl-notes">Recherche corrigée (résultats affichés sur Android), scan des dossiers locaux complet et correctifs de stabilité.</div>
+      <div class="cl-notes">Recherche et scan local corrigés.</div>
     </div>
     <div class="cl-item">
       <div class="cl-date">v0.1.9 — Août 2026</div>
-      <div class="cl-notes">Mises à jour automatiques directement depuis l'application (Windows & Android), corrections de stabilité et améliorations générales.</div>
+      <div class="cl-notes">Mises à jour automatiques dans l'application.</div>
     </div>
     <div class="cl-item">
       <div class="cl-date">v0.1.8 — Août 2026</div>
-      <div class="cl-notes">Scan musique/vidéos locales amélioré sur Android (permissions + accès Tous les fichiers), demande des permissions média au lancement, recherche et streaming YouTube plus fiables, améliorations du lecteur et de l'interface, version portable Windows disponible.</div>
-    </div>
-    <div class="cl-item">
-      <div class="cl-date">v0.1.7 — Non publiée</div>
-      <div class="cl-notes">Version intermédiaire non publiée.</div>
-    </div>
-    <div class="cl-item">
-      <div class="cl-date">v0.1.6 — Non publiée</div>
-      <div class="cl-notes">Version intermédiaire non publiée.</div>
-    </div>
-    <div class="cl-item">
-      <div class="cl-date">v0.1.5 — Non publiée</div>
-      <div class="cl-notes">Version intermédiaire non publiée.</div>
-    </div>
-    <div class="cl-item">
-      <div class="cl-date">v0.1.4 — Non publiée</div>
-      <div class="cl-notes">Version intermédiaire non publiée.</div>
-    </div>
-    <div class="cl-item">
-      <div class="cl-date">v0.1.3 — Non publiée</div>
-      <div class="cl-notes">Version intermédiaire non publiée.</div>
-    </div>
-    <div class="cl-item">
-      <div class="cl-date">v0.1.2 — Non publiée</div>
-      <div class="cl-notes">Version intermédiaire non publiée.</div>
+      <div class="cl-notes">Scan local amélioré, streaming plus fiable, version portable Windows.</div>
     </div>
     <div class="cl-item">
       <div class="cl-date">v0.1.1 — Juillet 2026</div>
-      <div class="cl-notes">Correction des bugs. Console fix, scan local fix, exe Windows disponible.</div>
+      <div class="cl-notes">Corrections de bugs.</div>
     </div>
     <div class="cl-item">
       <div class="cl-date">v0.1.0 — Juillet 2026</div>
-      <div class="cl-notes">Première version. Recherche, lecture en continu, téléchargement, playlists, musique locale, gestes tactiles.</div>
+      <div class="cl-notes">Première version.</div>
+    </div>
+    </div>
     </div>
     </div>
   </div>
