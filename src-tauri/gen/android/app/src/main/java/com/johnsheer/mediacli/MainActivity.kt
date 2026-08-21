@@ -11,7 +11,12 @@ import androidx.core.content.ContextCompat
 class MainActivity : TauriActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     try {
-      val suffix = "wv_${packageManager.getPackageInfo(packageName, 0).longVersionCode}"
+      val prefs = getSharedPreferences("wv_prefs", MODE_PRIVATE)
+      var suffix = prefs.getString("wv_suffix", null)
+      if (suffix == null) {
+        suffix = "wv_${System.currentTimeMillis()}"
+        prefs.edit().putString("wv_suffix", suffix).apply()
+      }
       android.webkit.WebView.setDataDirectorySuffix(suffix)
     } catch (_: Exception) {}
     super.onCreate(savedInstanceState)
