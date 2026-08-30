@@ -185,10 +185,15 @@ Write-Output "  latest.json -> $latestPath"
 $htmlPath = "hosting\index.html"
 $html = [System.IO.File]::ReadAllText((Join-Path $root $htmlPath))
 foreach ($id in @("dlWindows","dlPortable","dlAndroid")) {
-  $m = [regex]::Match($html, "(id=`"$id`"[^>]*href=`")([^`"]+)(`")")
-  if (-not $m.Success) { throw "Lien $id introuvable dans index.html" }
   $u = if ($id -eq "dlWindows") { $urlSetup } elseif ($id -eq "dlPortable") { $urlPort } else { $urlApk }
-  $html = $html.Substring(0, $m.Index) + $m.Groups[1].Value + $u + $m.Groups[3].Value + $html.Substring($m.Index + $m.Length)
+  # l'attribut id peut etre avant OU apres href selon l'historique du fichier
+  $rx = "(?i)<a\s[^>]*\bid=`"$id`"[^>]*?href=`"([^`"]+)`"[^>]*>|<a\s[^>]*?href=`"([^`"]+)`"[^>]*\bid=`"$id`"[^>]*>"
+  $m = [regex]::Match($html, $rx)
+  if (-not $m.Success) { throw "Lien $id introuvable dans index.html" }
+  $oldUrl = if ($m.Groups[1].Value -ne "") { $m.Groups[1].Value } else { $m.Groups[2].Value }
+  if ($oldUrl -ne $u) {
+    $html = [regex]::Replace($html, [regex]::Escape($oldUrl), $u, [System.Text.RegularExpressions.RegexOptions]::None)
+  }
 }
 # insere l'entree de changelog en tete
 $entry = "<div class=`"cl-item`">`n      <div class=`"cl-date`">v$Version — Août 2026</div>`n      <div class=`"cl-notes`">Version $Version - publication automatisee (URLs fraiches, APK a jour).</div>`n    </div>`n    "
