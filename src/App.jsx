@@ -29,6 +29,53 @@ export default function App() {
   const [showQueue, setShowQueue] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
+  const [permDenied, setPermDenied] = useState(false);
+
+  // Au premier lancement sur Android, « Tous les fichiers » est indispensable
+  // pour écrire dans /storage/emulated/0/MediaCLI. Si l'accès n'est pas encore
+  // accordé, on affiche une modale avec un unique bouton qui ouvre les réglages.
+  //
+  // Fermeture automatique : dès que la permission est accordée, la modale
+  // disparaît. Le « visibilitychange » seul n'est pas fiable dans la WebView
+  // Android, donc on combine : vérification immédiate + vérification au retour
+  // de l'app (tauri://resume) + polling toutes les 1,5 s pendant l'affichage.
+  useEffect(() => {
+    if (!IS_ANDROID) return;
+    let cancelled = false;
+    let poll = null;
+    const check = async () => {
+      let has = true;
+      try { has = await api.hasAllFilesAccess(); } catch { has = true; }
+      if (cancelled) return;
+      if (!has) setPermDenied(true);
+      else {
+        setPermDenied(false);
+        if (poll) { clearInterval(poll); poll = null; }
+      }
+    };
+    check();
+    poll = setInterval(check, 1500);
+    const onVisible = () => { if (document.visibilityState === "visible") check(); };
+    document.addEventListener("visibilitychange", onVisible);
+    let unlistenResume;
+    listen("tauri://resume", check).then((fn) => {
+      if (cancelled) fn();
+      else unlistenResume = fn;
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+      if (poll) clearInterval(poll);
+      document.removeEventListener("visibilitychange", onVisible);
+      if (unlistenResume) unlistenResume();
+    };
+  }, [IS_ANDROID]);
+
+  const handlePermAuthorize = async () => {
+    const ok = await api.requestAllFilesAccess();
+    if (!ok) {
+      try { await api.requestPermissions(); } catch {}
+    }
+  };
 
   // Demande de confirmation de quitter l'application : reçue quand une
   // fermeture réelle est déclenchée (croix native Windows, "Quitter" du tray,
@@ -187,6 +234,8 @@ export default function App() {
     }
   };
 
+  const handleAuthorizeAccess = handlePermAuthorize;
+
   const handlePlayPlaylist = (id, trackId) => {
     const pl = state.playlists[id];
     if (!pl || pl.tracks.length === 0) return;
@@ -260,7 +309,7 @@ export default function App() {
                 onAddToPlaylist={handleAddToPlaylist}
                 onCreateAndAdd={handleCreateAndAdd}
                 onOpenDownloads={handleOpenDownloads}
-                onAuthorize={() => api.requestPermissions()}
+                onAuthorize={handleAuthorizeAccess}
               />
             )}
 
@@ -328,6 +377,31 @@ export default function App() {
       )}
       <UpdateManager />
       {showSettings && <Settings open={showSettings} onClose={() => setShowSettings(false)} />}
+      {permDenied && (
+        <div className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/80 animate-fade-in">
+          <div className="w-[min(21rem,calc(100vw-48px))] rounded-2xl bg-surface border border-white/10 p-5 shadow-2xl">
+            <p className="text-base font-semibold text-white text-center leading-snug">
+              Autorisez l'accès aux fichiers
+            </p>
+            <p className="mt-2 text-[11px] text-white/70 text-center leading-snug">
+              Pour enregistrer vos téléchargements (audio et vidéo), MediaCLI a
+              besoin de la permission « Tous les fichiers » d'Android.
+            </p>
+            <button
+              onClick={handlePermAuthorize}
+              className="mt-5 w-full py-2.5 rounded-xl bg-accent-red text-white text-sm font-medium hover:bg-accent-red/90 transition-colors"
+            >
+              Autoriser l'accès
+            </button>
+            <button
+              onClick={() => setPermDenied(false)}
+              className="mt-2 w-full py-2 rounded-xl bg-white/[0.08] text-white/80 text-sm hover:bg-white/[0.14] transition-colors"
+            >
+              Plus tard
+            </button>
+          </div>
+        </div>
+      )}
       {showQuitConfirm && (
         <div className="fixed inset-0 z-[10060] flex items-center justify-center bg-black/80 animate-fade-in">
           <div className="w-[min(20rem,calc(100vw-48px))] rounded-2xl bg-surface border border-white/10 p-5 shadow-2xl">

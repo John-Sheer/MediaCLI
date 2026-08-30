@@ -1,5 +1,7 @@
 const API_BASE = "http://127.0.0.1:8787";
 
+import { invoke } from "@tauri-apps/api/core";
+
 async function getJson(path, params = {}) {
   const url = new URL(API_BASE + path);
   Object.entries(params).forEach(([k, v]) => {
@@ -93,6 +95,28 @@ export const api = {
   async requestPermissions() {
     return getJson("/request-permissions");
   },
+
+  // Vérifie l'accès "Tous les fichiers" (MANAGE_EXTERNAL_STORAGE) via le plugin
+  // natif. Sans cette permission spéciale, Android 11+ refuse toute écriture
+  // dans /storage/emulated/0/MediaCLI (os error 13 / EACCES).
+  async hasAllFilesAccess() {
+    try {
+      return (await invoke("has_all_files_access")) === true;
+    } catch (e) {
+      console.error("[perm] hasAllFilesAccess:", e);
+      return true;
+    }
+  },
+
+  async requestAllFilesAccess() {
+    try {
+      await invoke("request_all_files_access");
+      return true;
+    } catch (e) {
+      console.error("[perm] requestAllFilesAccess:", e);
+      return false;
+    }
+  },
 };
 
 export const friendlyError = (msg) => {
@@ -123,8 +147,12 @@ export function downloadErrorInfo(msg) {
     if (h >= 500) return { code: String(h), message: "erreur serveur" };
     return { code: String(h), message: "erreur de téléchargement" };
   }
-  if (/permission|refus|denied|deny/i.test(s)) {
-    return { code: "PERM", message: "accès aux fichiers refusé" };
+  if (/permission|refus|denied|deny/i.test(s) || /os error\s*\(?\s*13\s*\)?/i.test(s)) {
+    return {
+      code: "PERM",
+      message: "accès aux fichiers refusé — autorisez « Tous les fichiers » (Android 11+)",
+      raw: s,
+    };
   }
   if (/no space left|disk full|quota exceeded|ENOSPC/i.test(s)) {
     return { code: "STOCK", message: "espace insuffisant" };

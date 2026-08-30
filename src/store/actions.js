@@ -9,7 +9,9 @@ const mergeFolderFiles = (lists) => {
       if (!seen.has(f.path)) seen.set(f.path, f);
     }
   }
-  return [...seen.values()].sort((x, y) => x.name.localeCompare(y.name));
+  // Trie par date de modification décroissante : le dernier téléchargé en
+  // premier (même entre audio et vidéo fusionnés).
+  return [...seen.values()].sort((x, y) => (y.modified ?? 0) - (x.modified ?? 0));
 };
 
 export function useActions() {
@@ -231,7 +233,11 @@ export function useActions() {
       // rescan APRÈS le retour dans l'app (le WebView est suspendu tant que la
       // page de réglages est affichée, un fetch direct serait décalé).
       if (isAndroid) {
-        try { await api.requestPermissions(); } catch {}
+        if (await api.hasAllFilesAccess()) {
+          try { await api.requestPermissions(); } catch {}
+        } else {
+          try { await api.requestAllFilesAccess(); } catch {}
+        }
         await waitVisible();
         const second = await doScan();
         if (second.error) {

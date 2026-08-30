@@ -82,10 +82,10 @@ export function StreamingView({ state, onSearch, onPlay, onDownload, onTogglePau
                   {results.length} résultat{results.length > 1 ? "s" : ""}
                 </span>
                 {activeCount > 0 && (
-                  <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-accent-red/90">
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-gold">
                     <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent-red/40" />
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-accent-red" />
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-gold/40" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-gold" />
                     </span>
                     {activeCount} en cours
                   </span>

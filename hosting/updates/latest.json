@@ -1,15 +1,15 @@
-{
-    "version":  "0.1.15",
-    "notes":  "Mise a jour MediaCLI 0.1.15 (Windows + Android).",
-    "pub_date":  "2026-08-30T08:27:53Z",
+﻿{
     "platforms":  {
-                      "android-arm64":  {
-                                            "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.15/app-universal-release-signed.apk",
-                                            "signature":  ""
-                                        },
                       "windows-x86_64":  {
-                                             "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.15/MediaCLI-Setup.exe",
-                                             "signature":  "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUhOcFoyNWhkSFZ5WlNCbWNtOXRJSFJoZFhKcElITmxZM0psZENCclpYa0tVbFZSVDBObWJFbFZWWEIxYVVWYVRGaEJPSE5SYTNBM0szbDViRk5pZUdoaE1GWm9Va1JWY2pCc1ZURllLMHBpWjJwRWVXazFTMk51UW5GeGVITkZOSEVyVmk5d2QxZHJNamR6TTJsSGEydG9UMlpOUjJGRmRtMWllRTlCUkVOME0wRTRQUXAwY25WemRHVmtJR052YlcxbGJuUTZJSFJwYldWemRHRnRjRG94TnpnM09UWTFOemswQ1dacGJHVTZUV1ZrYVdGRFRFbGZNQzR4TGpFMFgzZzJOQzF6WlhSMWNDNWxlR1VLT0hSaU5sSnVSVVZKVW1oVU0wcHdWU3RtTmtwamExUmthbVZKTWpkWmExWkJNbWN5TVdkeU5UVnRRVmxyWlRscVlpczVabHBVTlRKT1lXSjFiVTlHVVRCeWVWaEJVMnRFVjNZNFduRlFielpHYmxVM1FYYzlQUW89"
-                                         }
-                  }
+                                             "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.16/MediaCLI-Setup.exe",
+                                             "signature":  "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUhOcFoyNWhkSFZ5WlNCbWNtOXRJSFJoZFhKcElITmxZM0psZENCclpYa0tVbFZSVDBObWJFbFZWWEIxYVVSQlJrczBOa1Z5UzJ0YWNreDFaMWhhUTBwbGJFcFpjQzlhUjB4UFZEaGhSREpUWW5OVmJHTkhhRUZvYmxKTVQyRnlNbEJ4VFcxRE1VMVZXa2d5VG1sWmNYQkVkRTUzTDFCTVdXcFdTVXRUZUVRdldsRkJQUXAwY25WemRHVmtJR052YlcxbGJuUTZJSFJwYldWemRHRnRjRG94TnpnNE1EZzJNekl4Q1dacGJHVTZUV1ZrYVdGRFRFbGZNQzR4TGpFMlgzZzJOQzF6WlhSMWNDNWxlR1VLWWxwTFlrbzJNbEYzTmtGR2NVdENjbXRuTms1Uk1IWkpSMHgxV1RZeWNtZDZSMVYwV1RNM0x6aHJkVGt4V1ZadWJHNUVLMjgwTWtoVVdtaDNVMXBSVkVwM04zSm9kVzlJT1hCT2VXbEllVVZ5VFhOSFFsRTlQUW89"
+                                         },
+                      "android-arm64":  {
+                                            "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.16/MediaCLI.apk",
+                                            "signature":  ""
+                                        }
+                  },
+    "pub_date":  "2026-08-30T10:38:41Z",
+    "version":  "0.1.16",
+    "notes":  "Mises Ã  jour depuis l\u0027application (Windows + Android), stabilitÃ© et correctifs."
 }

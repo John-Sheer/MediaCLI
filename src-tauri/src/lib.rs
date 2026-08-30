@@ -566,6 +566,9 @@ struct InstallerHandle(tauri::plugin::PluginHandle<tauri::Wry>);
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 struct BackgroundHandle(tauri::plugin::PluginHandle<tauri::Wry>);
 
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+struct StoragePermissionHandle(tauri::plugin::PluginHandle<tauri::Wry>);
+
 #[tauri::command]
 fn relaunch_app(app: tauri::AppHandle) {
     app.restart();
@@ -751,6 +754,70 @@ async fn request_install_permission(app: tauri::AppHandle) -> Result<(), String>
     }
 }
 
+#[cfg(target_os = "android")]
+fn storage_permission_handle(
+    app: &tauri::AppHandle,
+) -> Result<tauri::plugin::PluginHandle<tauri::Wry>, String> {
+    app.try_state::<StoragePermissionHandle>()
+        .map(|s| s.0.clone())
+        .ok_or_else(|| "plugin storagepermission non initialisé".to_string())
+}
+
+// Vrai accès "Tous les fichiers" (MANAGE_EXTERNAL_STORAGE) — obligatoire sur
+// Android 11+ pour écrire dans /storage/emulated/0/MediaCLI. Le manifest le
+// déclare, mais l'utilisateur doit l'accorder depuis les Paramètres système :
+// cette commande vérifie l'état réel et déclenche l'écran de la permission.
+#[tauri::command]
+async fn has_all_files_access(app: tauri::AppHandle) -> bool {
+    #[cfg(target_os = "android")]
+    {
+        match storage_permission_handle(&app) {
+            Ok(handle) => {
+                if let Ok(value) = handle
+                    .run_mobile_plugin_async::<serde_json::Value>(
+                        "hasAccess",
+                        serde_json::json!({}),
+                    )
+                    .await
+                {
+                    return value
+                        .get("has")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                }
+                false
+            }
+            Err(_) => false,
+        }
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        true
+    }
+}
+
+#[tauri::command]
+async fn request_all_files_access(app: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        let handle = storage_permission_handle(&app)?;
+        handle
+            .run_mobile_plugin_async::<serde_json::Value>(
+                "requestAccess",
+                serde_json::json!({}),
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        Ok(())
+    }
+}
+
 #[cfg(desktop)]
 struct ServerChildProcess(Mutex<Option<tauri_plugin_shell::process::CommandChild>>);
 
@@ -811,6 +878,27 @@ pub fn run() {
                             .register_android_plugin("com.johnsheer.mediacli", "InstallerPlugin")
                             .map_err(|e| e.to_string())?;
                         app.manage(InstallerHandle(handle));
+                    }
+                    #[cfg(not(target_os = "android"))]
+                    {
+                        let _ = (app, api);
+                    }
+                    Ok(())
+                })
+                .build(),
+        )
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry>::new("storagepermission")
+                .setup(|app, api| {
+                    #[cfg(target_os = "android")]
+                    {
+                        let handle = api
+                            .register_android_plugin(
+                                "com.johnsheer.mediacli",
+                                "StoragePermissionPlugin",
+                            )
+                            .map_err(|e| e.to_string())?;
+                        app.manage(StoragePermissionHandle(handle));
                     }
                     #[cfg(not(target_os = "android"))]
                     {
@@ -955,7 +1043,9 @@ pub fn run() {
             download_apk,
             install_apk,
             can_install_apk,
-            request_install_permission
+            request_install_permission,
+            has_all_files_access,
+            request_all_files_access
         ])
         .run(tauri::generate_context!())
         .expect("Erreur lors du lancement de l'application Tauri");

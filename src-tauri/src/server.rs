@@ -235,6 +235,7 @@ struct FileInfo {
     name: String,
     path: String,
     size_label: String,
+    modified: u64,
 }
 
 // ─── CORS ───
@@ -3093,10 +3094,17 @@ async fn handle_list_folder(
                         let size_label = fs::metadata(&path)
                             .map(|m| format_size(m.len()))
                             .unwrap_or_default();
+                        let modified = fs::metadata(&path)
+                            .ok()
+                            .and_then(|m| m.modified().ok())
+                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                            .map(|d| d.as_secs())
+                            .unwrap_or(0);
                         entries.push(FileInfo {
                             name,
                             path: path.to_string_lossy().to_string(),
                             size_label,
+                            modified,
                         });
                     }
                 }
@@ -3104,7 +3112,7 @@ async fn handle_list_folder(
         }
     }
     walk_dir(&dir, wanted, &mut entries);
-    entries.sort_by(|a, b| a.name.cmp(&b.name));
+    entries.sort_by(|a, b| b.modified.cmp(&a.modified));
     json_response(serde_json::json!({"files": entries}), StatusCode::OK, origin)
 }
 
@@ -3916,13 +3924,28 @@ async fn handle_request_permissions(
     let origin = headers.get("origin").and_then(|v| v.to_str().ok());
     #[cfg(target_os = "android")]
     {
-        let _ = tokio::process::Command::new("/system/bin/am")
-            .args([
-                "start", "-a", "android.settings.MANAGE_ALL_FILES_ACCESS_PERMISSION",
-                "-d", "package:com.johnsheer.mediacli"
-            ])
-            .output()
-            .await;
+        // Ouvre l'écran système de la permission "Tous les fichiers" pour CETTE
+        // app. L'action ciblée (MANAGE_APP_ALL_FILES_ACCESS_PERMISSION) est
+        // supportée depuis Android 11 ; on retombe sur l'action générale sinon.
+        let target = format!("package:com.johnsheer.mediacli");
+        let action = "android.settings.MANAGE_APP_ALL_FILES_ACCESS_PERMISSION";
+        let mut cmd = tokio::process::Command::new("/system/bin/am");
+        cmd.args(["start", "-a", action, "-d", &target]);
+        let out1 = cmd.output().await;
+        let failed = match &out1 {
+            Ok(o) => !o.status.success(),
+            Err(_) => true,
+        };
+        if failed {
+            let _ = tokio::process::Command::new("/system/bin/am")
+                .args([
+                    "start",
+                    "-a",
+                    "android.settings.MANAGE_ALL_FILES_ACCESS_PERMISSION",
+                ])
+                .output()
+                .await;
+        }
         json_response(serde_json::json!({"ok": true, "message": "Settings ouvert."}), StatusCode::OK, origin)
     }
     #[cfg(not(target_os = "android"))]

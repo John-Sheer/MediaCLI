@@ -12,19 +12,23 @@ function formatDuration(seconds) {
 
 function ErrorTag({ info, onAuthorize }) {
   if (!info) return null;
+  if (info.code === "PERM" && onAuthorize) {
+    // Permission « Tous les fichiers » absente : n'afficher QUE le bouton
+    // d'autorisation, qui envoie l'utilisateur dans les réglages Android.
+    return (
+      <button
+        onClick={onAuthorize}
+        className="shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-semibold text-accent-red bg-accent-red/[0.10] ring-1 ring-accent-red/30 hover:bg-accent-red/[0.18] hover:ring-accent-red/55 transition-all duration-150 active:scale-95"
+      >
+        Autoriser l'accès aux fichiers
+      </button>
+    );
+  }
   return (
     <span className="inline-flex items-center gap-1.5 text-[10px] text-red-400/90 leading-none" title={info.raw || info.message}>
       <AlertTriangle className="w-3 h-3 shrink-0" />
       <span className="font-mono shrink-0">[{info.code}]</span>
       <span className="truncate">{info.message}</span>
-      {info.code === "PERM" && onAuthorize && (
-        <button
-          onClick={onAuthorize}
-          className="shrink-0 px-2 py-1 rounded-md text-[10px] font-semibold text-accent-red bg-accent-red/[0.10] ring-1 ring-accent-red/25 hover:bg-accent-red/[0.18] hover:ring-accent-red/50 transition-all duration-150 active:scale-95"
-        >
-          Autoriser
-        </button>
-      )}
     </span>
   );
 }
@@ -205,8 +209,14 @@ export default function SongCard({ song, onPlay, onDownload, onTogglePause, stat
 
         {(errors.audio || errors.video) && (
           <div className="px-2.5 py-2 flex flex-wrap items-center gap-x-3 gap-y-0.5 justify-end" onClick={(e) => e.stopPropagation()}>
-            <ErrorTag info={errors.audio} onAuthorize={onAuthorize} />
-            <ErrorTag info={errors.video} onAuthorize={onAuthorize} />
+            {errors.audio?.code === "PERM" && errors.video?.code === "PERM" ? (
+              <ErrorTag info={errors.audio} onAuthorize={onAuthorize} />
+            ) : (
+              <>
+                <ErrorTag info={errors.audio} onAuthorize={onAuthorize} />
+                <ErrorTag info={errors.video} onAuthorize={onAuthorize} />
+              </>
+            )}
           </div>
         )}
       </div>
