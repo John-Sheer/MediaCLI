@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { Play, Pause, SkipBack, SkipForward, X, ChevronDown, ChevronUp, Maximize2, Minimize2, Loader2, RefreshCw, Volume2, VolumeX, Shuffle, Repeat, Repeat1, Music, Video, ListMusic, SlidersHorizontal, Timer, Mic, Forward, Rewind, Download } from "lucide-react";
+import { Play, Pause, SkipBack, SkipForward, X, ChevronDown, ChevronUp, Maximize2, Minimize2, Loader2, RefreshCw, Volume2, VolumeX, Shuffle, Repeat, Repeat1, Music, Video, ListMusic, Timer, Mic, Forward, Rewind, Download, EyeOff } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { onThumbbarAction } from "../lib/thumbbar.js";
@@ -8,13 +8,14 @@ import useSwipeGesture from "../hooks/useSwipeGesture";
 
 const IS_ANDROID = /android/i.test(navigator.userAgent || "");
 
-function VolumeControl({ volume, onMute, onVolume, showVolume, showVolumeNow, showVolumeWithDelay, hideVolumeWithDelay, size = 14, sliderH = 20 }) {
+function VolumeControl({ volume, onMute, onVolume, showVolume, showVolumeNow, showVolumeWithDelay, hideVolumeWithDelay, size = 14, sliderH = 22 }) {
   const toggle = (e) => {
     e?.stopPropagation();
     if (showVolume) hideVolumeWithDelay();
     else if (showVolumeNow) showVolumeNow();
     else showVolumeWithDelay();
   };
+  const volPct = Math.round((volume ?? 0) * 100);
   return (
     <div className="relative" onMouseEnter={showVolumeWithDelay} onMouseLeave={hideVolumeWithDelay}>
       <button
@@ -26,11 +27,11 @@ function VolumeControl({ volume, onMute, onVolume, showVolume, showVolumeNow, sh
       </button>
       {showVolume && (
         <div
-          className="absolute bottom-full left-1/2 -translate-x-1/2 pb-0.5 flex items-end z-50"
+          className="absolute bottom-full left-1/2 -translate-x-1/2 pb-1 z-50"
           onMouseEnter={showVolumeWithDelay}
           onMouseLeave={hideVolumeWithDelay}
         >
-          <div className="bg-black/60 backdrop-blur-sm rounded-lg p-2.5 shadow-xl flex items-center justify-center ring-1 ring-white/[0.08] gap-2">
+          <div className="bg-black/70 backdrop-blur-md rounded-xl px-2.5 py-2 shadow-xl ring-1 ring-white/[0.08] flex flex-col items-center gap-1.5">
             <button
               onClick={(e) => { e.stopPropagation(); onMute && onMute(); }}
               className="text-white/85 hover:text-white shrink-0"
@@ -38,17 +39,25 @@ function VolumeControl({ volume, onMute, onVolume, showVolume, showVolumeNow, sh
             >
               {volume === 0 ? <VolumeX size={13} /> : <Volume2 size={13} />}
             </button>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={volume}
-              onInput={onVolume}
-              onMouseDown={(e) => e.stopPropagation()}
-              className="vol-line cursor-pointer"
-              style={{ writingMode: "vertical-lr", direction: "rtl", height: `${sliderH * 4}px` }}
-            />
+            <div className="w-full flex justify-center py-0.5">
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={volume}
+                onInput={onVolume}
+                onMouseDown={(e) => e.stopPropagation()}
+                className="vol-line cursor-pointer touch-none"
+                style={{
+                  writingMode: "vertical-lr",
+                  direction: "rtl",
+                  height: `${sliderH * 4}px`,
+                  background: `linear-gradient(to top, #c81e3a ${volPct}%, rgba(255,255,255,0.14) ${volPct}%)`,
+                }}
+              />
+            </div>
+            <span className="text-[9px] font-mono text-white/85 leading-none tabular-nums">{volPct}%</span>
           </div>
         </div>
       )}
@@ -70,7 +79,9 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
   const [duration, setDuration] = useState(0);
   const [isSeeking, setIsSeeking] = useState(false);
   const [minimized, setMinimized] = useState(false);
+  const [hidden, setHidden] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [confirmExit, setConfirmExit] = useState(false);
   const [showFsControls, setShowFsControls] = useState(true);
 
   const [hasVideo, setHasVideo] = useState(false);
@@ -100,6 +111,13 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
   useEffect(() => { currentSongRef.current = currentSong; }, [currentSong]);
   const playingRef = useRef(playing);
   useEffect(() => { playingRef.current = playing; }, [playing]);
+  const lastSongIdRef = useRef(null);
+  useEffect(() => {
+    if (currentSong && currentSong.id !== lastSongIdRef.current) {
+      lastSongIdRef.current = currentSong.id;
+      setHidden(false);
+    }
+  }, [currentSong]);
   const [pos, setPos] = useState(() => {
     const w = window.innerWidth;
     const h = window.innerHeight;
@@ -499,6 +517,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
   const handleVolumeRef = useRef(handleVolume);
   const toggleMuteRef = useRef(toggleMute);
   const fullscreenRef = useRef(fullscreen);
+  const fsOrientationRef = useRef(false);
   const onNextRef = useRef(onNext);
   const onPreviousRef = useRef(onPrevious);
   const onCloseRef = useRef(onClose);
@@ -513,6 +532,15 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
   useEffect(() => { onPreviousRef.current = onPrevious; }, [onPrevious]);
   useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => { onEndedRef.current = onEnded; }, [onEnded]);
+
+  const requestExit = (e) => {
+    e?.stopPropagation();
+    setConfirmExit(true);
+  };
+  const confirmExitNow = () => {
+    setConfirmExit(false);
+    onCloseRef.current?.();
+  };
 
   useEffect(() => {
     const onKey = (e) => {
@@ -670,6 +698,15 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       el.style.willChange = 'left, top';
     }
   }, []);
+
+  // Déplacement du lecteur en posant le doigt n'importe où sur sa surface,
+  // sans détourner les appuis sur les contrôles (boutons, sliders, champs…).
+  const playerDragStart = useCallback((e) => {
+    const el = e.target;
+    if (el && el.closest && el.closest("button, input, select, a, textarea, [role='button'], [role='slider'], [role='tab']")) return;
+    if (e.touches) e.preventDefault();
+    handleDragStart(e);
+  }, [handleDragStart]);
 
   const showControlsTemp = useCallback(() => {
     setShowControls(true);
@@ -844,25 +881,63 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     }
   }, [playing, currentSong]);
 
+  // Rotation automatique Android : paysage dès que le lecteur passe en
+  // plein écran, retour portrait à la sortie (y compris à la fermeture).
+  useEffect(() => {
+    if (!IS_ANDROID) return;
+    if (fsOrientationRef.current !== fullscreen) {
+      fsOrientationRef.current = fullscreen;
+      invoke("set_orientation", { landscape: fullscreen }).catch(() => {});
+    }
+    return () => {
+      if (IS_ANDROID && fsOrientationRef.current) {
+        fsOrientationRef.current = false;
+        invoke("set_orientation", { landscape: false }).catch(() => {});
+      }
+    };
+  }, [fullscreen]);
+
   if (!currentSong) return null;
 
   const poster = currentSong.thumbnail || undefined;
 
+  const isLocalPlayback = !!streamUrl && streamUrl.includes("/local?path=");
+
   return createPortal(<>
+    {!fullscreen && hidden && currentSong && (
+      <button
+        onClick={() => setHidden(false)}
+        title="Afficher le lecteur"
+        className="fixed bottom-3 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-2 rounded-full pl-1.5 pr-3.5 py-1.5 bg-accent-red/95 text-white shadow-[0_6px_24px_rgba(0,0,0,0.5)] ring-1 ring-white/20 hover:bg-accent-red active:scale-95 transition-all duration-200 animate-fade-in"
+      >
+        <span className="w-7 h-7 rounded-full overflow-hidden shrink-0 bg-black/40 flex items-center justify-center">
+          {currentSong.thumbnail ? (
+            <img src={"http://127.0.0.1:8787/thumb?url=" + encodeURIComponent(currentSong.thumbnail)} className="w-full h-full object-cover" alt="" draggable="false" />
+          ) : (
+            <Music className="w-3.5 h-3.5 text-white/85" />
+          )}
+        </span>
+        <span className="max-w-[180px] truncate text-[11px] font-medium leading-none">{currentSong.title}</span>
+        <span className="w-2 h-2 rounded-full bg-white/90 shadow-[0_0_8px_rgba(255,255,255,0.8)] animate-pulse" />
+      </button>
+    )}
     <div
       ref={playerRef}
       data-player-root
       tabIndex={0}
       style={fullscreen ? {} : { position: 'fixed', left: pos.x, top: pos.y, zIndex: 9998 }}
-      onTouchStart={fullscreen ? swipeHandlers.handleTouchStart : undefined}
+      onTouchStart={fullscreen ? swipeHandlers.handleTouchStart : playerDragStart}
       onTouchEnd={fullscreen ? swipeHandlers.handleTouchEnd : undefined}
+      onMouseDown={fullscreen ? undefined : playerDragStart}
       className={`
         z-50 transition-[width,height,opacity,transform] duration-300
-          ${fullscreen
-            ? `fixed inset-0 z-[9999] bg-black flex flex-col ${!showFsControls ? 'cursor-none' : ''}`
-            : minimized
-              ? 'bg-black w-[min(20rem,calc(100vw-24px))] border border-accent-red/60 shadow-[0_0_18px_-6px_rgba(200,30,58,0.4)]'
-              : 'bg-black w-[min(24rem,calc(100vw-24px))] max-h-[calc(100dvh-16px)] border border-accent-red/60 shadow-[0_0_22px_-6px_rgba(200,30,58,0.4)]'
+          ${hidden && !fullscreen
+            ? 'opacity-0 scale-[0.9] pointer-events-none'
+            : fullscreen
+              ? `fixed inset-0 z-[9999] bg-black flex flex-col ${!showFsControls ? 'cursor-none' : ''}`
+              : minimized
+                ? 'bg-black w-[min(20rem,calc(100vw-24px))] border border-accent-red/60 shadow-[0_0_18px_-6px_rgba(200,30,58,0.4)]'
+                : 'bg-black w-[min(24rem,calc(100vw-24px))] max-h-[calc(100dvh-16px)] border border-accent-red/60 shadow-[0_0_22px_-6px_rgba(200,30,58,0.4)]'
           }
       `}
     >
@@ -955,8 +1030,8 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
               <input type="range" min={0} max={duration || 0} value={progress} onInput={handleSeek} onMouseDown={handleSeekStart} onMouseUp={handleSeekEnd} onMouseMove={handleSeekHover} onMouseLeave={handleSeekLeave} className="flex-1 cursor-pointer" style={{ background: `linear-gradient(to right, #c81e3a ${duration ? (progress/duration)*100 : 0}%, rgba(225,29,72,0.25) ${duration ? (progress/duration)*100 : 0}%)` }} />
               <span className="text-[10px] font-mono text-white/85 shrink-0">{format(duration)}</span>
             </div>
-            <div className="flex items-center justify-between px-1">
-              <div className="flex items-center gap-1">
+            <div className="flex items-center justify-between gap-3 px-1">
+              <div className="flex items-center justify-center gap-1 flex-1">
                 <button onClick={onToggleShuffle} className={`bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${shuffle ? "text-accent-red" : "text-white/80 hover:text-white"}`} title="Lecture aléatoire">
                   <Shuffle size={18} />
                 </button>
@@ -964,7 +1039,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
                   {repeatMode === "one" ? <Repeat1 size={18} /> : <Repeat size={18} />}
                 </button>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-center gap-2 flex-1">
                 <button onClick={onPrevious} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/90 hover:text-white transition-colors">
                   <SkipBack size={20} />
                 </button>
@@ -975,7 +1050,10 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
                   <SkipForward size={20} />
                 </button>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center justify-center gap-1 flex-1">
+                <button onClick={() => onToggleQueue && onToggleQueue()} className={`bg-black/60 backdrop-blur-sm rounded-full p-2 text-white/85 hover:text-white transition-colors ${showQueue ? "text-accent-red" : ""}`} title="File d'attente">
+                  <ListMusic size={17} />
+                </button>
                 <VolumeControl
                   volume={volume}
                   onMute={toggleMute}
@@ -985,11 +1063,13 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
                   showVolumeWithDelay={showVolumeWithDelay}
                   hideVolumeWithDelay={hideVolumeWithDelay}
                   size={17}
-                  sliderH={20}
+                  sliderH={22}
                 />
-                <button onClick={() => { if (currentSong && onDownload) onDownload(currentSong, "video"); }} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors" title="Télécharger (vidéo)">
-                  <Download size={17} />
-                </button>
+                {!isLocalPlayback && (
+                  <button onClick={() => { if (currentSong && onDownload) onDownload(currentSong, "video"); }} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors" title="Télécharger (vidéo)">
+                    <Download size={17} />
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -1011,16 +1091,16 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
             </div>
             {showControls && (
             <div className="flex items-center gap-1">
-              <button onClick={() => onToggleQueue && onToggleQueue()} className={`bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${showQueue ? "text-accent-red" : "text-white/85 hover:text-white"}`} title="File d'attente">
-                <ListMusic className="w-4 h-4" />
-              </button>
               <button onClick={toggleFullscreen} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors" title="Plein écran">
                 <Maximize2 className="w-4 h-4" />
               </button>
               <button onClick={() => setMinimized(true)} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors" title="Réduire">
                 <ChevronDown className="w-4 h-4" />
               </button>
-              <button onClick={onClose} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors" title="Fermer">
+              <button onClick={() => setHidden(true)} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors" title="Masquer le lecteur">
+                <EyeOff className="w-4 h-4" />
+              </button>
+              <button onClick={requestExit} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors" title="Fermer">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -1030,7 +1110,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       )}
 
       {!fullscreen && minimized && (
-        <div className="select-none border border-white/[0.15] bg-black" style={{ touchAction: 'none' }} onMouseDown={handleDragStart} onTouchStart={(e) => { e.stopPropagation(); handleDragStart(e); }}>
+        <div className="select-none border border-white/[0.15] bg-black" style={{ touchAction: 'none' }} onMouseDown={playerDragStart} onTouchStart={(e) => { e.stopPropagation(); playerDragStart(e); }}>
           <div className="flex items-center gap-3 px-3.5 py-2.5">
             <div className="w-10 h-10 overflow-hidden shrink-0 bg-white/[0.04] ring-1 ring-white/[0.06]">
               {currentSong.thumbnail ? (
@@ -1056,7 +1136,10 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
               <button onClick={(e) => { e.stopPropagation(); setMinimized(false); }} className="p-1.5 rounded-md text-white/80 hover:text-white/90 hover:bg-white/[0.06] transition-colors" title="Agrandir">
                 <ChevronUp className="w-3.5 h-3.5" />
               </button>
-              <button onClick={(e) => { e.stopPropagation(); onClose(); }} className="p-1.5 rounded-md text-white/80 hover:text-white/90 hover:bg-white/[0.06] transition-colors" title="Fermer">
+              <button onClick={(e) => { e.stopPropagation(); setHidden(true); }} className="p-1.5 rounded-md text-white/80 hover:text-white/90 hover:bg-white/[0.06] transition-colors" title="Masquer le lecteur">
+                <EyeOff className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={requestExit} className="p-1.5 rounded-md text-white/80 hover:text-white/90 hover:bg-white/[0.06] transition-colors" title="Fermer">
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -1082,30 +1165,18 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
 
           <div className="flex items-center gap-2.5 px-3.5 pb-2.5">
             <span className="text-[9px] font-mono text-white/80 tabular-nums w-8 text-right">{format(progress)}</span>
-            <div className="flex items-center gap-0.5 shrink-0">
-              <button onClick={(e) => { e.stopPropagation(); onPrevious(); }} className="text-white/80 hover:text-white/90 transition-colors p-1 rounded-md hover:bg-white/[0.06]" title="Précédent">
-                <SkipBack size={14} fill="currentColor" />
+            <div className="flex-1 flex items-center justify-center gap-3">
+              <button onClick={(e) => { e.stopPropagation(); onPrevious(); }} className="text-white/80 hover:text-white/90 transition-colors p-1.5 rounded-md hover:bg-white/[0.06]" title="Précédent">
+                <SkipBack size={16} fill="currentColor" />
               </button>
-              <button onClick={(e) => { e.stopPropagation(); togglePlay(); }} className="w-8 h-8 flex items-center justify-center rounded-full text-white bg-white/[0.08] hover:bg-white/[0.14] transition-colors" title={playing ? "Pause" : "Lecture"}>
-                {streamError ? <RefreshCw className="w-3.5 h-3.5" /> : buffering ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : playing ? <Pause className="w-3.5 h-3.5" fill="currentColor" /> : <Play className="w-3.5 h-3.5 ml-px" fill="currentColor" />}
+              <button onClick={(e) => { e.stopPropagation(); togglePlay(); }} className="w-10 h-10 flex items-center justify-center rounded-full text-white bg-white/[0.08] hover:bg-white/[0.14] transition-colors" title={playing ? "Pause" : "Lecture"}>
+                {streamError ? <RefreshCw className="w-4 h-4" /> : buffering ? <Loader2 className="w-4 h-4 animate-spin" /> : playing ? <Pause className="w-4 h-4" fill="currentColor" /> : <Play className="w-4 h-4 ml-px" fill="currentColor" />}
               </button>
-              <button onClick={(e) => { e.stopPropagation(); onNext(); }} className="text-white/80 hover:text-white/90 transition-colors p-1 rounded-md hover:bg-white/[0.06]" title="Suivant">
-                <SkipForward size={14} fill="currentColor" />
+              <button onClick={(e) => { e.stopPropagation(); onNext(); }} className="text-white/80 hover:text-white/90 transition-colors p-1.5 rounded-md hover:bg-white/[0.06]" title="Suivant">
+                <SkipForward size={16} fill="currentColor" />
               </button>
             </div>
             <span className="text-[9px] font-mono text-white/80 tabular-nums w-8">{format(duration)}</span>
-            <div className="flex-1" />
-            <VolumeControl
-              volume={volume}
-              onMute={(e) => { e?.stopPropagation(); toggleMute(); }}
-              onVolume={handleVolume}
-              showVolume={showVolume}
-              showVolumeNow={() => setShowVolume(true)}
-              showVolumeWithDelay={showVolumeWithDelay}
-              hideVolumeWithDelay={hideVolumeWithDelay}
-              size={13}
-              sliderH={16}
-            />
           </div>
         </div>
       )}
@@ -1133,50 +1204,55 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
                   </div>
                 )}
               </div>
-              <div className="flex items-center justify-center gap-5">
-                <button onClick={onToggleShuffle} className={`bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${shuffle ? "text-accent-red" : "text-white/85 hover:text-white"}`} title="Lecture aléatoire">
-                  <Shuffle size={18} />
-                </button>
-                <button onClick={onCycleRepeat} className={`bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${repeatMode !== "off" ? "text-accent-red" : "text-white/85 hover:text-white"}`} title="Répétition">
-                  {repeatMode === "one" ? <Repeat1 size={18} /> : <Repeat size={18} />}
-                </button>
-                <button onClick={onPrevious} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors">
-                  <SkipBack size={18} />
-                </button>
-                 <button onClick={togglePlay} className="w-14 h-14 flex items-center justify-center rounded-full text-white bg-black/60 backdrop-blur-sm hover:bg-white/[0.12] transition-all duration-200">
-                   {streamError ? <RefreshCw size={18} /> : playing ? <Pause size={22} /> : <Play className="ml-1" size={22} />}
-                 </button>
-                <button onClick={onNext} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors">
-                  <SkipForward size={18} />
-                </button>
-                 <VolumeControl
-                  volume={volume}
-                  onMute={toggleMute}
-                  onVolume={handleVolume}
-                  showVolume={showVolume}
-                  showVolumeNow={() => setShowVolume(true)}
-                  showVolumeWithDelay={showVolumeWithDelay}
-                  hideVolumeWithDelay={hideVolumeWithDelay}
-                  size={16}
-                  sliderH={20}
-                />
-                 <button onClick={() => { if (currentSong && onDownload) onDownload(currentSong, "video"); }} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors" title="Télécharger (vidéo)">
-                   <Download size={18} />
-                 </button>
-                 {lyricLines.length > 0 && (
-                  <button onClick={() => setShowLyrics(v => !v)} className={`bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${showLyrics ? "text-accent-red" : "text-white/85 hover:text-white"}`} title="Paroles synchronisées">
-                    <Mic size={18} />
+<div className="flex items-center justify-between gap-3">
+                <div className="flex items-center justify-center gap-2 flex-1">
+                  <button onClick={onToggleShuffle} className={`bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${shuffle ? "text-accent-red" : "text-white/85 hover:text-white"}`} title="Lecture aléatoire">
+                    <Shuffle size={18} />
                   </button>
-                )}
-                <button onClick={() => setEqOpen((o) => !o)} className={`bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${eqOpen ? "text-accent-red" : "text-white/85 hover:text-white"}`} title="Égaliseur & tonalité">
-                  <SlidersHorizontal size={18} />
-                </button>
-                <button onClick={() => setShowSleep((o) => !o)} className={`bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${sleepMinutes > 0 || showSleep ? "text-accent-red" : "text-white/85 hover:text-white"}`} title="Minuterie de sommeil">
-                  <Timer size={18} />
-                </button>
-                <button onClick={() => { setShowFsPlaylist(v => !v); setShowLyrics(false); }} className={`bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${showFsPlaylist ? "text-accent-red" : "text-white/85 hover:text-white"}`} title="Playlist">
-                  <ListMusic size={18} />
-                </button>
+                  <button onClick={onCycleRepeat} className={`bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${repeatMode !== "off" ? "text-accent-red" : "text-white/85 hover:text-white"}`} title="Répétition">
+                    {repeatMode === "one" ? <Repeat1 size={18} /> : <Repeat size={18} />}
+                  </button>
+                </div>
+                <div className="flex items-center justify-center gap-4 flex-1">
+                  <button onClick={onPrevious} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors">
+                    <SkipBack size={18} />
+                  </button>
+                  <button onClick={togglePlay} className="w-14 h-14 flex items-center justify-center rounded-full text-white bg-black/60 backdrop-blur-sm hover:bg-white/[0.12] transition-all duration-200">
+                    {streamError ? <RefreshCw size={18} /> : playing ? <Pause size={22} /> : <Play className="ml-1" size={22} />}
+                  </button>
+                  <button onClick={onNext} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors">
+                    <SkipForward size={18} />
+                  </button>
+                </div>
+                <div className="flex items-center justify-center gap-2 flex-1">
+                  <VolumeControl
+                    volume={volume}
+                    onMute={toggleMute}
+                    onVolume={handleVolume}
+                    showVolume={showVolume}
+                    showVolumeNow={() => setShowVolume(true)}
+                    showVolumeWithDelay={showVolumeWithDelay}
+                    hideVolumeWithDelay={hideVolumeWithDelay}
+                    size={16}
+                    sliderH={20}
+                  />
+                  {lyricLines.length > 0 && (
+                    <button onClick={() => { setShowLyrics(v => !v); setShowFsPlaylist(false); }} className={`relative bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${showLyrics ? "text-accent-red" : "text-white/85 hover:text-white"}`} title="Paroles synchronisées">
+                      <Mic size={18} />
+                    </button>
+                  )}
+                  <button onClick={() => setShowSleep((o) => !o)} className={`relative bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${sleepMinutes > 0 || showSleep ? "text-accent-red" : "text-white/85 hover:text-white"}`} title="Minuterie de sommeil">
+                    <Timer size={18} />
+                  </button>
+                  <button onClick={() => { setShowFsPlaylist(v => !v); setShowLyrics(false); }} className={`relative bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${showFsPlaylist ? "text-accent-red" : "text-white/85 hover:text-white"}`} title="Playlist">
+                    <ListMusic size={18} />
+                  </button>
+                  {!isLocalPlayback && (
+                    <button onClick={() => { if (currentSong && onDownload) onDownload(currentSong, "video"); }} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors" title="Télécharger (vidéo)">
+                      <Download size={18} />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -1203,75 +1279,39 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
             const currentId = currentSong?.id;
             return (
               <div style={{ bottom: `calc(var(--sab, 20px) + 112px)` }} className="absolute left-0 right-0 z-10 flex justify-center px-4 pointer-events-none">
-                <div onMouseMove={(e) => e.stopPropagation()} onScroll={(e) => e.stopPropagation()} className={`max-w-lg w-full max-h-[40vh] overflow-y-auto scroll-modern rounded-2xl bg-black/70 backdrop-blur-md border border-white/[0.08] pointer-events-auto p-3 ${!showFsControls ? 'cursor-none' : ''}`}>
-                  <p className="text-xs uppercase tracking-wider text-white/80 mb-2">File d'attente ({playlist.length})</p>
-                  {playlist.map((track, i) => {
-                    const isActive = (track.id) === currentId;
-                    return (
-                      <button
-                        key={track.id + i}
-                        onClick={(e) => { e.stopPropagation(); onPlayAt && onPlayAt(i); }}
-                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${isActive ? "bg-accent-red/20" : "hover:bg-white/[0.08]"}`}
-                      >
-                        {isActive && <span className="text-accent-red text-[10px] font-bold shrink-0">▶</span>}
-                        {!isActive && <span className="text-white/80 text-[10px] w-3 text-center shrink-0">{i + 1}</span>}
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-[12px] font-medium truncate ${isActive ? "text-white" : "text-white/90"}`}>{track.title}</p>
-                          <p className={`text-[10px] truncate ${isActive ? "text-green-400/90" : "text-green-400/85"}`}>{track.channel}</p>
-                        </div>
-                      </button>
-                    );
-                  })}
+                <div onMouseMove={(e) => e.stopPropagation()} className={`relative max-w-lg w-full rounded-2xl bg-black/70 backdrop-blur-md border border-white/[0.08] pointer-events-auto py-3 pl-3 pr-1.5 animate-fade-in ${!showFsControls ? 'cursor-none' : ''}`}>
+                  <button onClick={() => setShowFsPlaylist(false)} className="absolute top-2 right-2 z-30 p-1 rounded-md text-white/70 hover:text-white hover:bg-white/[0.08] transition-colors" title="Fermer">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                  <p className="text-xs uppercase tracking-wider text-white/80 mb-2 pr-8">File d'attente ({playlist.length})</p>
+                  <div onScroll={(e) => e.stopPropagation()} className="max-h-[calc(40vh-40px)] overflow-y-auto scroll-modern pr-2 pl-0">
+                    {playlist.map((track, i) => {
+                      const isActive = (track.id) === currentId;
+                      return (
+                        <button
+                          key={track.id + i}
+                          onClick={(e) => { e.stopPropagation(); onPlayAt && onPlayAt(i); }}
+                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${isActive ? "bg-accent-red/20" : "hover:bg-white/[0.08]"}`}
+                        >
+                          {isActive && <span className="text-accent-red text-[10px] font-bold shrink-0">▶</span>}
+                          {!isActive && <span className="text-white/80 text-[10px] w-3 text-center shrink-0">{i + 1}</span>}
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-[12px] font-medium truncate ${isActive ? "text-white" : "text-white/90"}`}>{track.title}</p>
+                            <p className={`text-[10px] truncate ${isActive ? "text-green-400/90" : "text-green-400/85"}`}>{track.channel}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             );
           })()}
-          {eqOpen && (
-            <div style={{ bottom: `calc(var(--sab, 20px) + 112px)` }} className="absolute right-4 z-20 w-72 p-4 rounded-2xl bg-black/70 backdrop-blur-md border border-white/[0.08] pointer-events-auto">
-              <p className="text-xs uppercase tracking-wider text-white/80 mb-3">Égaliseur & tonalité</p>
-              {IS_ANDROID && (
-                <p className="text-[10px] text-white/60 mb-3 leading-snug">
-                  Égaliseur désactivé sur Android (le routage WebAudio y coupe le son après une pause).
-                </p>
-              )}
-              <div className="flex flex-wrap gap-1.5 mb-3">
-                {Object.keys(EQ_PRESETS).map((name) => (
-                  <button
-                    key={name}
-                    onClick={() => applyPreset(name)}
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors ${
-                      eqPreset === name
-                        ? "bg-accent-red text-white"
-                        : "bg-white/[0.06] text-white/80 hover:bg-white/[0.1] hover:text-white/90"
-                    }`}
-                  >
-                    {name}
-                  </button>
-                ))}
-              </div>
-              <div className="space-y-3">
-                <div>
-                  <div className="flex justify-between text-[11px] text-white/85 mb-1"><span>Basses</span><span>{bass > 0 ? "+" : ""}{bass.toFixed(1)}</span></div>
-                  <input type="range" min={-12} max={12} step={0.5} value={bass} onChange={(e) => setBass(parseFloat(e.target.value))} className="w-full accent-red-600" />
-                </div>
-                <div>
-                  <div className="flex justify-between text-[11px] text-white/85 mb-1"><span>Médiums</span><span>{mid > 0 ? "+" : ""}{mid.toFixed(1)}</span></div>
-                  <input type="range" min={-12} max={12} step={0.5} value={mid} onChange={(e) => setMid(parseFloat(e.target.value))} className="w-full accent-red-600" />
-                </div>
-                <div>
-                  <div className="flex justify-between text-[11px] text-white/85 mb-1"><span>Aigus</span><span>{treble > 0 ? "+" : ""}{treble.toFixed(1)}</span></div>
-                  <input type="range" min={-12} max={12} step={0.5} value={treble} onChange={(e) => setTreble(parseFloat(e.target.value))} className="w-full accent-red-600" />
-                </div>
-                <div>
-                  <div className="flex justify-between text-[11px] text-white/85 mb-1"><span>Tonalité (pitch)</span><span>{pitch.toFixed(2)}x</span></div>
-                  <input type="range" min={0.5} max={1.5} step={0.01} value={pitch} onChange={(e) => setPitch(parseFloat(e.target.value))} className="w-full accent-red-600" />
-                </div>
-                <button onClick={() => { setBass(0); setMid(0); setTreble(0); setPitch(1); setEqPreset("Flat"); }} className="w-full mt-1 text-[11px] py-1.5 rounded-lg bg-white/[0.08] hover:bg-white/[0.14] text-white/90 transition-colors">Réinitialiser</button>
-              </div>
-            </div>
-          )}
           {showSleep && (
-            <div style={{ bottom: `calc(var(--sab, 20px) + 112px)` }} className="absolute left-4 z-20 w-56 p-4 rounded-2xl bg-black/70 backdrop-blur-md border border-white/[0.08] pointer-events-auto">
+            <div style={{ bottom: `calc(var(--sab, 20px) + 112px)` }} className="absolute left-4 z-20 w-56 p-4 pt-3 rounded-2xl bg-black/70 backdrop-blur-md border border-white/[0.08] pointer-events-auto animate-fade-in">
+              <button onClick={() => setShowSleep(false)} className="absolute top-2 right-2 z-30 p-1 rounded-md text-white/70 hover:text-white hover:bg-white/[0.08] transition-colors" title="Fermer">
+                <X className="w-3.5 h-3.5" />
+              </button>
               <p className="text-xs uppercase tracking-wider text-white/80 mb-3">Minuterie de sommeil</p>
               <div className="grid grid-cols-2 gap-2">
                 {[15, 30, 45, 60].map((m) => (
@@ -1316,5 +1356,29 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
         </div>
       )}
     </div>
+    {confirmExit && (
+      <div className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in">
+        <div className="w-[min(20rem,calc(100vw-48px))] rounded-2xl bg-surface border border-white/10 p-5 shadow-2xl">
+          <p className="text-base font-semibold text-white text-center">Quitter le lecteur ?</p>
+          <p className="mt-1 text-[11px] text-white/70 text-center leading-snug">
+            La lecture en cours sera arrêtée.
+          </p>
+          <div className="mt-5 flex gap-2.5">
+            <button
+              onClick={confirmExitNow}
+              className="flex-1 py-2.5 rounded-xl bg-accent-red text-white text-sm font-medium hover:bg-accent-red/90 transition-colors"
+            >
+              Quitter
+            </button>
+            <button
+              onClick={() => setConfirmExit(false)}
+              className="flex-1 py-2.5 rounded-xl bg-white/[0.08] text-white/90 text-sm hover:bg-white/[0.14] transition-colors"
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
   </>, document.body);
 }

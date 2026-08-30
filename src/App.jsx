@@ -16,6 +16,9 @@ import { useStore } from "./store/store.jsx";
 import { useActions } from "./store/actions.js";
 import { api } from "./api/client.js";
 import { onThumbbarAction } from "./lib/thumbbar.js";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { X } from "lucide-react";
 
 
 export default function App() {
@@ -25,6 +28,62 @@ export default function App() {
   const scrollRef = useRef(null);
   const [showQueue, setShowQueue] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showQuitConfirm, setShowQuitConfirm] = useState(false);
+
+  // Demande de confirmation de quitter l'application : reçue quand une
+  // fermeture réelle est déclenchée (croix native Windows, "Quitter" du tray,
+  // bouton X de la barre du haut, ou bouton retour Android). On affiche la
+  // modale et on n'appelle quit_app qu'après accord de l'utilisateur.
+  //
+  // IMPORTANT (ANR Android) : avant d'afficher la modale on met la lecture en
+  // pause. L'overlay de la modale est semi-transparent ; si la vidéo
+  // continue de se dérouler plein écran derrière, Chromium doit recomposer
+  // chaque frame (surtout avec un effet de flou), ce qui sature le processeur
+  // de rendu et bloque le thread principal ("ne répond pas"). En mettant la
+  // lecture en pause on libère le rendu et la modale reste fluide. Si
+  // l'utilisateur annule, on reprend la lecture là où elle en était.
+  const pausedMediaRef = useRef(null);
+
+  const openQuitConfirm = () => {
+    const media = document.querySelector("video, audio");
+    if (media && !media.paused && typeof media.pause === "function") {
+      try { media.pause(); pausedMediaRef.current = media; } catch {}
+    }
+    setShowQuitConfirm(true);
+  };
+
+  const closeQuitConfirm = () => {
+    const media = pausedMediaRef.current;
+    pausedMediaRef.current = null;
+    setShowQuitConfirm(false);
+    if (media && typeof media.play === "function") {
+      try { media.play().catch(() => {}); } catch {}
+    }
+  };
+
+  useEffect(() => {
+    const onDomQuit = () => openQuitConfirm();
+    window.addEventListener("quit-requested", onDomQuit);
+    let unlisten;
+    let cancelled = false;
+    listen("quit-requested", () => {
+      if (!cancelled) openQuitConfirm();
+    }).then((fn) => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+      if (unlisten) unlisten();
+      window.removeEventListener("quit-requested", onDomQuit);
+    };
+  }, []);
+
+  const confirmQuit = () => {
+    pausedMediaRef.current = null;
+    setShowQuitConfirm(false);
+    invoke("quit_app").catch(() => {});
+  };
 
   // Thumbbar: listen for previous/next from taskbar buttons / notification
   useEffect(() => {
@@ -156,7 +215,7 @@ export default function App() {
     <div className="h-screen flex flex-col bg-gradient-to-b from-bg via-[#07070d] to-bg">
       <div className="fixed -top-px left-0 right-0 h-px bg-bg z-[9999]" />
       <div className="fixed inset-0 bg-grain pointer-events-none" />
-          {!state.playerFullscreen && <TitleBar onAbout={() => dispatch({ type: "TOGGLE_ABOUT", open: true })} onClose={actions.stop} />}
+          {!state.playerFullscreen && <TitleBar onAbout={() => dispatch({ type: "TOGGLE_ABOUT", open: true })} onClose={openQuitConfirm} />}
 
       <div
         className={`${state.playerFullscreen ? "hidden" : "flex-1 min-h-0 flex flex-col"}`}
@@ -195,6 +254,7 @@ export default function App() {
                 onSearch={runSearch}
                 onPlay={playStreaming}
                 onDownload={actions.download}
+                onTogglePause={actions.togglePause}
                 onQueryChange={(q) => dispatch({ type: "SET_QUERY", query: q })}
                 onMenuToggle={(id) => dispatch({ type: "SET_MENU_SONG", id })}
                 onAddToPlaylist={handleAddToPlaylist}
@@ -268,6 +328,35 @@ export default function App() {
       )}
       <UpdateManager />
       {showSettings && <Settings open={showSettings} onClose={() => setShowSettings(false)} />}
+      {showQuitConfirm && (
+        <div className="fixed inset-0 z-[10060] flex items-center justify-center bg-black/80 animate-fade-in">
+          <div className="w-[min(20rem,calc(100vw-48px))] rounded-2xl bg-surface border border-white/10 p-5 shadow-2xl">
+            <div className="flex justify-end -mt-1 -mr-1">
+              <button onClick={closeQuitConfirm} className="p-1.5 rounded-lg hover:bg-white/[0.08] text-white/60 hover:text-white transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-base font-semibold text-white text-center">Quitter MediaCLI ?</p>
+            <p className="mt-1 text-[11px] text-white/70 text-center leading-snug">
+              La lecture en cours sera arrêtée.
+            </p>
+            <div className="mt-5 flex gap-2.5">
+              <button
+                onClick={confirmQuit}
+                className="flex-1 py-2.5 rounded-xl bg-accent-red text-white text-sm font-medium hover:bg-accent-red/90 transition-colors"
+              >
+                Quitter
+              </button>
+              <button
+                onClick={closeQuitConfirm}
+                className="flex-1 py-2.5 rounded-xl bg-white/[0.08] text-white/90 text-sm hover:bg-white/[0.14] transition-colors"
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

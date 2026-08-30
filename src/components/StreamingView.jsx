@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { FolderOpen, AlertCircle, RefreshCw, Music } from "lucide-react";
 import SearchBar from "./SearchBar.jsx";
 import SongCard from "./SongCard.jsx";
@@ -40,14 +41,19 @@ function ErrorState({ error, onRetry }) {
   );
 }
 
-export function StreamingView({ state, onSearch, onPlay, onDownload, onQueryChange, onMenuToggle, onAddToPlaylist, onCreateAndAdd, onOpenDownloads, onResume, onAuthorize }) {
-  const { results, loading, searchError, query, menuSongId, downloadStatus, downloadProgress, downloadErrors, playlists, currentSong } = state;
+export function StreamingView({ state, onSearch, onPlay, onDownload, onTogglePause, onQueryChange, onMenuToggle, onAddToPlaylist, onCreateAndAdd, onOpenDownloads, onResume, onAuthorize }) {
+  const { results, loading, searchError, query, menuSongId, downloadStatus, downloadProgress, downloadPaused, downloadErrors, playlists, currentSong } = state;
   const centered = results.length === 0 && !loading && !searchError;
   const activeCount = Object.values(downloadStatus).filter((s) => s === "downloading").length;
+
+  const [revealedId, setRevealedId] = useState(null);
+
+  const reveal = (id) => setRevealedId(id);
 
   const handleSearch = (q) => {
     addRecentSearch(q || query);
     onSearch(q || query);
+    setRevealedId(null);
   };
 
   return (
@@ -96,13 +102,14 @@ export function StreamingView({ state, onSearch, onPlay, onDownload, onQueryChan
             </div>
           </div>
 
-          <div className="space-y-1.5 px-3 animate-fade-in-up" onMouseLeave={() => onMenuToggle(null)}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 px-3 animate-fade-in-up" onMouseLeave={() => onMenuToggle(null)}>
             {results.map((song) => (
               <SongCard
                 key={song.id}
                 song={song}
                 onPlay={onPlay}
                 onDownload={onDownload}
+                onTogglePause={onTogglePause}
                 status={{
                   audio: downloadStatus[`${song.id}-audio`],
                   video: downloadStatus[`${song.id}-video`],
@@ -110,6 +117,10 @@ export function StreamingView({ state, onSearch, onPlay, onDownload, onQueryChan
                 progress={{
                   audio: downloadProgress[`${song.id}-audio`],
                   video: downloadProgress[`${song.id}-video`],
+                }}
+                paused={{
+                  audio: downloadPaused[`${song.id}-audio`],
+                  video: downloadPaused[`${song.id}-video`],
                 }}
                 errors={{
                   audio: downloadErrors[`${song.id}-audio`],
@@ -121,6 +132,8 @@ export function StreamingView({ state, onSearch, onPlay, onDownload, onQueryChan
                 onAddToPlaylist={onAddToPlaylist}
                 onCreateAndAdd={onCreateAndAdd}
                 isPlaying={currentSong?.id === song.id}
+                showPlay={revealedId === song.id}
+                onReveal={() => reveal(song.id)}
                 onAuthorize={onAuthorize}
               />
             ))}

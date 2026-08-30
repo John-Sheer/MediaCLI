@@ -74,6 +74,7 @@ export default function SearchBar({ query, setQuery, onSearch, loading }) {
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onSearch(); } }}
           placeholder={!focused && !query ? "$ mediacli search…" : focused && !query ? "artist, album, titre…" : ""}
           style={{ outline: "none", boxShadow: "none" }}
           className="w-full h-full bg-transparent outline-none appearance-none font-mono text-[13px] text-white/90 text-white/80 tracking-wider caret-transparent px-4"
@@ -91,8 +92,9 @@ export default function SearchBar({ query, setQuery, onSearch, loading }) {
         )}
       </div>
 
-      {/* Submit */}
-      {query.trim() && focused && (
+      {/* Submit - toujours visible des qu'il y a du texte (sinon le blur de l'input
+          fait disparaitre le bouton avant le clic et la recherche ne se lance pas) */}
+      {query.trim() && (
         <button
           type="submit"
           className="shrink-0 flex items-center gap-1.5 h-full px-4 text-[#ff3b5c]/80 hover:text-[#ff3b5c] hover:bg-[#ff3b5c]/[0.05] transition-all duration-200 font-mono text-[11px] font-medium tracking-wider border-l border-white/[0.04]"

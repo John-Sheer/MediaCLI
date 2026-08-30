@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
 import { StoreProvider } from "./store/store.jsx";
+import { reportError, reportMessage } from "./lib/errlog.js";
 import "./index.css";
 
 const IS_ANDROID = /android/i.test(navigator.userAgent || "");
@@ -11,6 +12,9 @@ if (IS_ANDROID) {
   const bottom = window.screen?.height - (window.screen?.availTop ?? 0) - (window.screen?.availHeight ?? 0);
   document.documentElement.style.setProperty("--sat", `${Math.max(top, 24)}px`);
   document.documentElement.style.setProperty("--sab", `${Math.max(bottom, 16)}px`);
+  window.addEventListener("error", (e) => reportError("window.onerror", e.error || e.message));
+  window.addEventListener("unhandledrejection", (e) => reportError("unhandledrejection", e.reason));
+  reportMessage("boot", "loaded " + location.href + " ua=" + navigator.userAgent.slice(0, 80));
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(

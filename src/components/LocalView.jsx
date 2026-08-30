@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { FolderOpen, Music, Video, Play, GripVertical, RefreshCw, Loader2, Search, MoreVertical, ListPlus, Plus } from "lucide-react";
+import { FolderOpen, Music, Video, Play, GripVertical, RefreshCw, Loader2, Search, MoreVertical, ListPlus, Plus, FolderSearch } from "lucide-react";
+import { api } from "../api/client";
 
 
 function SkeletonRows() {
@@ -103,7 +104,7 @@ function FolderTile({ folder, onClick, active, playing }) {
   );
 }
 
-function SongNameRow({ file, index, playing, onPlay, dragHandlers, isDragging, registerRef, gripRef, gripHandlers, playlists, onAddToPlaylist, onCreateAndAdd }) {
+function SongNameRow({ file, folderLabel, sizeLabel, index, playing, onPlay, dragHandlers, isDragging, registerRef, gripRef, gripHandlers, playlists, onAddToPlaylist, onCreateAndAdd }) {
   const isVideo = /\.(mp4|mkv|mov|webm)$/i.test(file.name);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showPlSub, setShowPlSub] = useState(false);
@@ -152,12 +153,18 @@ function SongNameRow({ file, index, playing, onPlay, dragHandlers, isDragging, r
         {String(index + 1).padStart(2, "0")}
       </span>
       <span
-        className={`flex-1 min-w-0 text-[11px] truncate ${
+        className={`flex-1 min-w-0 ${
           playing ? "text-accent-red font-semibold drop-shadow-[0_0_14px_rgba(255,59,92,1)] drop-shadow-[0_0_28px_rgba(255,59,92,1)]" : "text-white/90 group-hover:text-white"
         }`}
       >
-        {file.name}
+        <span className="block truncate text-[11px]">{file.name}</span>
+        {folderLabel && (
+          <span className="block truncate text-[9px] font-mono mt-0.5 text-muted/80">{folderLabel}</span>
+        )}
       </span>
+      {sizeLabel && (
+        <span className={`shrink-0 text-[10px] font-mono tabular-nums ${playing ? "text-accent-red/80" : "text-white/70"} pl-1`}>{sizeLabel}</span>
+      )}
       {playing ? (
         <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-accent-red" aria-label="En lecture" />
       ) : (
@@ -244,6 +251,43 @@ export function LocalView({ state, actions, onPlayFile, playlists, onAddToPlayli
   }, [localFiles.length, localFolder]);
 
   const [filterQuery, setFilterQuery] = useState("");
+  const [searchFiles, setSearchFiles] = useState(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState(null);
+
+  const searchSeq = useRef(0);
+
+  useEffect(() => {
+    const q = filterQuery.trim();
+    const seq = ++searchSeq.current;
+    if (!q) {
+      setSearchFiles(null);
+      setSearchLoading(false);
+      setSearchError(null);
+      return;
+    }
+    setSearchLoading(true);
+    setSearchError(null);
+    const t = setTimeout(async () => {
+      try {
+        const res = await api.searchLocal(q);
+        if (seq !== searchSeq.current) return;
+        if (res.error) {
+          setSearchError(res.error);
+          setSearchFiles([]);
+        } else {
+          setSearchFiles(Array.isArray(res.files) ? res.files : []);
+        }
+      } catch {
+        if (seq !== searchSeq.current) return;
+        setSearchError("Impossible de contacter le serveur.");
+        setSearchFiles([]);
+      } finally {
+        if (seq === searchSeq.current) setSearchLoading(false);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [filterQuery]);
 
   const playingPath =
     state.streamUrl && state.streamUrl.includes("/local?path=")
@@ -374,9 +418,8 @@ export function LocalView({ state, actions, onPlayFile, playlists, onAddToPlayli
     onContextMenu: (e) => e.preventDefault(),
   });
 
-  const filteredDirs = localDirs.filter(
-    (d) => !filterQuery || d.name.toLowerCase().includes(filterQuery.toLowerCase()) || d.path.toLowerCase().includes(filterQuery.toLowerCase())
-  );
+  const searching = !!filterQuery.trim();
+  const filteredDirs = localDirs;
   const filteredFiles = ordered.filter(
     (f) => !filterQuery || f.name.toLowerCase().includes(filterQuery.toLowerCase())
   );
@@ -410,7 +453,7 @@ export function LocalView({ state, actions, onPlayFile, playlists, onAddToPlayli
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/80" />
             <input
               type="text"
-              placeholder="Filtrer les dossiers ou fichiers…"
+              placeholder="Rechercher dans tous les dossiers…"
               value={filterQuery}
               onChange={(e) => setFilterQuery(e.target.value)}
               className="w-full bg-white/[0.06] border border-white/[0.08] rounded-lg pl-8 pr-3 py-1.5 text-xs text-white/90 text-white/85 outline-none focus:border-white/30 transition-colors"
@@ -450,7 +493,54 @@ export function LocalView({ state, actions, onPlayFile, playlists, onAddToPlayli
             </div>
 
             <div ref={contentScrollRef} className="min-w-0 bg-blue-500/[0.04] rounded-xl p-3">
-              {!localFolder ? (
+              {searching ? (
+                <>
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-7 h-7 rounded-lg bg-white/[0.06] ring-1 ring-white/15 flex items-center justify-center shrink-0">
+                      <FolderSearch className="w-3.5 h-3.5 text-white/85" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[10px] font-mono text-muted/85 truncate">Recherche dans tous les dossiers</p>
+                      <p className="text-xs font-semibold text-white/90 truncate">
+                        {searchFiles ? `${searchFiles.length} fichier${searchFiles.length > 1 ? "s" : ""} trouvé${searchFiles.length > 1 ? "s" : ""}` : "Recherche de la bibliothèque…"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {searchError && <ErrorBox message={searchError} />}
+                  {searchLoading && (
+                    <div className="flex items-center gap-2 text-[11px] font-mono text-white/85 py-4">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Recherche en cours…
+                    </div>
+                  )}
+                  {!searchLoading && !searchError && searchFiles && searchFiles.length === 0 && (
+                    <p className="text-[11px] text-muted mt-3">Aucun fichier ne correspond à « {filterQuery} ».</p>
+                  )}
+
+                  <div ref={filesScrollRef} className="space-y-1 max-h-[calc(100vh-260px)] overflow-y-auto scroll-modern pr-1">
+                    {(searchFiles || []).map((f) => (
+                      <SongNameRow
+                        key={f.path}
+                        file={f}
+                        folderLabel={f.folder}
+                        sizeLabel={f.size_label}
+                        index={0}
+                        playing={!!playingPath && playingPath === f.path}
+                        onPlay={() => onPlayFile({ id: f.path, title: f.name, channel: "Local", thumbnail: null, duration: 0 }, f.path)}
+                        dragHandlers={{}}
+                        isDragging={false}
+                        registerRef={() => {}}
+                        gripRef={() => {}}
+                        gripHandlers={() => ({})}
+                        playlists={playlists}
+                        onAddToPlaylist={onAddToPlaylist}
+                        onCreateAndAdd={onCreateAndAdd}
+                      />
+                    ))}
+                  </div>
+                </>
+              ) : !localFolder ? (
                 <div className="flex flex-col items-center justify-center h-full py-16 text-center">
                   <FolderOpen className="w-10 h-10 text-white/80 mb-3" />
                   <p className="text-xs text-muted/90">Sélectionnez un dossier à gauche</p>

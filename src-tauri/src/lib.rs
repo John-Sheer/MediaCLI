@@ -13,15 +13,19 @@ mod server;
 // doit être masquée dans le tray ou réellement fermée.
 static IS_PLAYING: AtomicBool = AtomicBool::new(false);
 
+// Passe à true uniquement après confirmation de l'utilisateur (commande quit_app).
+// Permet de laisser passer la fermeture réelle déclenchée par le frontend.
+static QUIT_CONFIRMED: AtomicBool = AtomicBool::new(false);
+
 #[cfg(desktop)]
 mod tray_state {
     use std::sync::{Mutex, OnceLock};
     use tauri::menu::MenuItem;
 
     pub struct TrayHandles {
-        pub now_title: MenuItem,
-        pub now_artist: MenuItem,
-        pub play_pause: MenuItem,
+        pub now_title: MenuItem<tauri::Wry>,
+        pub now_artist: MenuItem<tauri::Wry>,
+        pub play_pause: MenuItem<tauri::Wry>,
     }
 
     pub static TRAY: OnceLock<Mutex<Option<TrayHandles>>> = OnceLock::new();
@@ -418,6 +422,24 @@ async fn background_state(app: tauri::AppHandle) -> BackgroundState {
 }
 
 #[tauri::command]
+async fn set_orientation(app: tauri::AppHandle, landscape: bool) {
+    #[cfg(target_os = "android")]
+    {
+        if let Some(handle) = app.try_state::<BackgroundHandle>() {
+            let _ = handle
+                .0
+                .run_mobile_plugin_async::<serde_json::Value>(
+                    "setOrientation",
+                    serde_json::json!({ "landscape": landscape }),
+                )
+                .await;
+        }
+    }
+    #[cfg(not(target_os = "android"))]
+    let _ = app;
+}
+
+#[tauri::command]
 async fn select_folder_dialog(app: tauri::AppHandle) -> Option<String> {
     #[cfg(desktop)]
     {
@@ -514,7 +536,12 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
                 let _ = app.emit("thumbbar-action", "next");
             }
             "tray-quit" => {
-                app.exit(0);
+                if !QUIT_CONFIRMED.load(Ordering::SeqCst) {
+                    show_main_window(app);
+                    let _ = app.emit("quit-requested", ());
+                } else {
+                    app.exit(0);
+                }
             }
             _ => {}
         })
@@ -542,6 +569,15 @@ struct BackgroundHandle(tauri::plugin::PluginHandle<tauri::Wry>);
 #[tauri::command]
 fn relaunch_app(app: tauri::AppHandle) {
     app.restart();
+}
+
+// Fermeture réelle de l'application, appelée par le frontend SEULEMENT après
+// confirmation de l'utilisateur. Sans ce passage, la fermeture native (croix OS,
+// etc.) est interceptée et une demande de confirmation est envoyée au frontend.
+#[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    QUIT_CONFIRMED.store(true, Ordering::SeqCst);
+    app.exit(0);
 }
 
 #[tauri::command]
@@ -834,15 +870,14 @@ pub fn run() {
                     .map(PathBuf::from)
                     .unwrap_or_else(|_| {
                         if cfg!(target_os = "android") {
-                            let primary = PathBuf::from("/storage/emulated/0/MediaCLI");
-                            if std::fs::create_dir_all(&primary).is_ok() && std::fs::write(primary.join(".write_test"), b"ok").is_ok() {
-                                let _ = std::fs::remove_file(primary.join(".write_test"));
-                                primary
-                            } else {
-                                let fallback = PathBuf::from("/storage/emulated/0/Android/data/com.johnsheer.mediacli/files/MediaCLI");
-                                let _ = std::fs::create_dir_all(&fallback);
-                                fallback
-                            }
+                            // Depuis Android 11+, /storage/emulated/0/Android/data/<pkg>/...
+                            // est inaccessible en écriture brute (EACCES). On utilise le
+                            // dossier de bibliothèque public /storage/emulated/0/MediaCLI,
+                            // le même que celui de l'app d'origine (les téléchargements y
+                            // apparaissent directement dans la bibliothèque locale).
+                            let app_dir = PathBuf::from("/storage/emulated/0/MediaCLI");
+                            let _ = std::fs::create_dir_all(&app_dir);
+                            app_dir
                         } else {
                             PathBuf::from("C:\\MediaCLI")
                         }
@@ -871,7 +906,7 @@ pub fn run() {
                         Some(dir) => dir,
                         None => resource_dir,
                     };
-                    server::start_server(output_dir, Some(resource_dir)).await;
+                    std::thread::spawn(move || server::run_server_sync(output_dir, Some(resource_dir)));
                 });
             }
 
@@ -880,13 +915,21 @@ pub fn run() {
         .on_window_event(|window, event| {
             // Fermeture en arrière-plan : si une piste est en cours de lecture,
             // on masque la fenêtre dans le tray au lieu de quitter l'application.
+            // Sinon, toute fermeture qui provoquerait la sortie réelle de l'app
+            // est d'abord soumise à une confirmation (event "quit-requested") :
+            // le frontend affiche la modale et n'appelle quit_app qu'après accord.
             #[cfg(desktop)]
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if QUIT_CONFIRMED.load(Ordering::SeqCst) {
+                    return;
+                }
                 if IS_PLAYING.load(Ordering::SeqCst) {
                     api.prevent_close();
                     let _ = window.hide();
                     return;
                 }
+                api.prevent_close();
+                let _ = window.emit("quit-requested", ());
             }
 
             #[cfg(desktop)]
@@ -905,8 +948,10 @@ pub fn run() {
             set_playing_state,
             update_position,
             background_state,
+            set_orientation,
             request_android_storage_permission,
             relaunch_app,
+            quit_app,
             download_apk,
             install_apk,
             can_install_apk,

@@ -38,6 +38,7 @@ const initialState = {
   // téléchargements
   downloadStatus: {},
   downloadProgress: {},
+  downloadPaused: {},
   downloadErrors: {},
 
   // playlists sauvegardées
@@ -226,6 +227,9 @@ function reducer(state, action) {
     case "DOWNLOAD_PROGRESS":
       return { ...state, downloadProgress: { ...state.downloadProgress, [action.key]: action.progress } };
 
+    case "DOWNLOAD_PAUSED":
+      return { ...state, downloadPaused: { ...state.downloadPaused, [action.key]: action.paused } };
+
     case "DOWNLOAD_ERROR":
       return { ...state, downloadErrors: { ...state.downloadErrors, [action.key]: action.info } };
 
@@ -294,7 +298,10 @@ export function StoreProvider({ children }) {
       for (const [key] of active) {
         try {
           const data = await api.progress(key);
-          if (data) dispatch({ type: "DOWNLOAD_PROGRESS", key, progress: data.progress });
+          if (data) {
+            dispatch({ type: "DOWNLOAD_PROGRESS", key, progress: data.progress });
+            if (typeof data.paused === "boolean") dispatch({ type: "DOWNLOAD_PAUSED", key, paused: data.paused });
+          }
         } catch {
           /* noop */
         }

@@ -1,8 +1,9 @@
 use async_stream::stream;
 use axum::{
     body::Body,
-    extract::{Query, State},
+    extract::{Request, Query, State},
     http::{HeaderMap, HeaderValue, Method, StatusCode},
+    middleware::{self, Next},
     response::{IntoResponse, Response, Sse},
     routing::{get, post},
     Json, Router,
@@ -13,7 +14,7 @@ use futures_util::StreamExt as _;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     convert::Infallible,
     fs,
     io::{Read as _, Seek as _, SeekFrom},
@@ -122,6 +123,8 @@ struct ServerState {
     search_cache: Arc<RwLock<HashMap<String, (Instant, serde_json::Value)>>>,
     stream_cache: Arc<RwLock<HashMap<String, (Instant, String)>>>,
     progress_map: Arc<RwLock<HashMap<String, f64>>>,
+    paused_set: Arc<RwLock<HashSet<String>>>,
+    child_pids: Arc<RwLock<HashMap<String, i32>>>,
     tor_enabled: Arc<RwLock<bool>>,
     innertube_key: Option<String>,
     player_script_cache: Arc<RwLock<Option<(Instant, String, String)>>>,
@@ -140,6 +143,11 @@ enum NTransformOp {
 
 #[derive(Deserialize)]
 struct SearchParams {
+    q: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct LocalSearchParams {
     q: Option<String>,
 }
 
@@ -187,6 +195,12 @@ struct OpenFolderBody {
 #[derive(Deserialize)]
 struct ProxyBody {
     action: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct PauseBody {
+    #[serde(alias = "id")]
+    download_id: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -248,6 +262,108 @@ async fn handle_options(headers: HeaderMap) -> Response {
     let mut h = cors_headers_map(origin);
     h.insert("access-control-max-age", "86400".parse().unwrap());
     (StatusCode::OK, h, "").into_response()
+}
+
+// Diagnostique l'état réseau de l'app : lookup système, DNS UDP direct 8.8.8.8,
+// et connect TCP par IP — pour distinguer DNS vs route bloqués.
+async fn handle_netprobe() -> Response {
+    use serde_json::json;
+
+    let sys = tokio::time::timeout(
+        Duration::from_secs(5),
+        tokio::net::lookup_host(("www.youtube.com", 80)),
+    )
+    .await;
+    let sys_r = match sys {
+        Ok(Ok(it)) => format!("{:?}", it.map(|s| s.to_string()).collect::<Vec<_>>()),
+        Ok(Err(e)) => format!("ERR {}", e),
+        Err(_) => "TIMEOUT".into(),
+    };
+
+    let mut payload: Vec<u8> = vec![0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+    for lb in "www.youtube.com".split('.') {
+        payload.push(lb.len() as u8);
+        payload.extend_from_slice(lb.as_bytes());
+    }
+    payload.push(0);
+    payload.extend_from_slice(&[0u8, 1, 0, 1]);
+
+    let dns = tokio::time::timeout(Duration::from_secs(5), async {
+        let sock = tokio::net::UdpSocket::bind("0.0.0.0:0").await?;
+        sock.connect("8.8.8.8:53").await?;
+        sock.send(&payload).await?;
+        let mut buf = [0u8; 512];
+        let n = sock.recv(&mut buf).await?;
+        Ok::<_, std::io::Error>(buf[..n].to_vec())
+    })
+    .await;
+    let dns_r = match dns {
+        Ok(Ok(ans)) if ans.len() > 12 && (ans[2] & 0x80) != 0 => {
+            let mut ip = String::new();
+            let mut p = 12usize;
+            while p < ans.len() {
+                let b = ans[p];
+                if b == 0 {
+                    p += 1;
+                    break;
+                }
+                p += 1 + b as usize;
+            }
+            p += 4;
+            while p + 11 <= ans.len() {
+                let f = ans[p];
+                if (f & 0xc0) == 0xc0 {
+                    p += 2;
+                } else {
+                    let l = f as usize;
+                    p += 1 + l;
+                }
+                if p + 10 <= ans.len() {
+                    let typ = ((ans[p] as u16) << 8) | ans[p + 1] as u16;
+                    let rdlen = ((ans[p + 8] as u16) << 8) | ans[p + 9] as u16;
+                    if p + 10 + rdlen as usize <= ans.len() && typ == 1 && rdlen as usize == 4 {
+                        let v = &ans[p + 10..p + 14];
+                        ip = format!("{}.{}.{}.{}", v[0], v[1], v[2], v[3]);
+                    }
+                    p += 10 + rdlen as usize;
+                } else {
+                    break;
+                }
+            }
+            format!("DNS-OK {}", ip)
+        }
+        Ok(_) => "DNS-REP-MALFORMED".into(),
+        Err(_) => "DNS-IO-ERR".into(),
+    };
+
+    let tcp = tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(("8.8.8.8", 443))).await;
+    let tcp_r = match tcp {
+        Ok(Ok(_)) => "TCP-443-OK".into(),
+        Ok(Err(e)) => format!("TCP-ERR {}", e),
+        Err(_) => "TCP-TIMEOUT".into(),
+    };
+
+    let out = json!({ "sys_lookup": sys_r, "dns_udp_8833": dns_r, "tcp_ip_443": tcp_r });
+    server_log!("[netprobe] {}", out);
+    Json(out).into_response()
+}
+
+/// Middleware de diagnostic : loggue l'entrée et la sortie de chaque requête
+/// HTTP dans le fichier crash pour voir si les requêtes atteignent axum.
+async fn log_requests(req: Request, next: Next) -> Response {
+    let m = req.method().clone();
+    let u = req.uri().path().to_string();
+    LAST_HTTP.store(
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0),
+        std::sync::atomic::Ordering::Relaxed,
+    );
+    ACTIVE_REQUESTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    crashlog(&format!("[req+] {} {}", m, u));
+    let t0 = Instant::now();
+    let resp = next.run(req).await;
+    ACTIVE_REQUESTS.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+    crashlog(&format!("[req-] {} {} {}ms", m, u, t0.elapsed().as_millis()));
+    resp
 }
 
 // ─── SECURITY ───
@@ -1155,36 +1271,35 @@ async fn pick_audio_format(
     Some((url, ext_from_mime(mt)))
 }
 
-async fn probe_audio_url(client: &reqwest::Client, url: &str) -> Option<u64> {
-    let mut resp = client
-        .get(url)
-        .header("User-Agent", UA)
-        .header("Referer", "https://www.youtube.com/")
-        .header("Origin", "https://www.youtube.com")
-        .header("Range", "bytes=0-262143")
-        .send()
-        .await
-        .ok()?;
-    if !resp.status().is_success() {
+async fn pick_lowest_progressive(
+    data: &serde_json::Value,
+    client: &reqwest::Client,
+    state: &ServerState,
+) -> Option<(String, String, u64)> {
+    let streaming = data.get("streamingData")?;
+    let formats: Vec<&serde_json::Value> = streaming
+        .get("formats")
+        .and_then(|v| v.as_array())
+        .map(|a| a.iter().collect::<Vec<_>>())
+        .unwrap_or_default();
+    let mut candidates: Vec<serde_json::Value> = formats
+        .into_iter()
+        .filter(|f| f.get("url").is_some() || f.get("signatureCipher").is_some() || f.get("cipher").is_some())
+        .cloned()
+        .collect();
+    if candidates.is_empty() {
         return None;
     }
-    let total = resp
-        .headers()
-        .get("content-range")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.rsplit('/').next())
-        .and_then(|s| s.trim().parse::<u64>().ok());
-    let mut got: u64 = 0;
-    while let Ok(Some(chunk)) = resp.chunk().await {
-        got += chunk.len() as u64;
-        if got >= 1_000_000 {
-            break;
-        }
-    }
-    if got == 0 {
-        return None;
-    }
-    total
+    candidates.sort_by(|a, b| {
+        a.get("itag").and_then(|x| x.as_u64()).unwrap_or(999)
+            .cmp(&b.get("itag").and_then(|x| x.as_u64()).unwrap_or(999))
+    });
+    let fmt = &candidates[0];
+    let mt = fmt.get("mimeType").and_then(|m| m.as_str()).unwrap_or("");
+    let itag = fmt.get("itag").and_then(|x| x.as_u64()).unwrap_or(0);
+    let url = decipher_format_url(fmt, client, state).await?;
+    server_log!("[audio] progressive bas itag={} mime={}", itag, mt);
+    Some((url, ext_from_mime(mt), itag))
 }
 
 async fn resolve_audio_url(state: &ServerState, id: &str) -> Option<(String, String, u64)> {
@@ -1192,62 +1307,93 @@ async fn resolve_audio_url(state: &ServerState, id: &str) -> Option<(String, Str
     let key = state.innertube_key.as_deref().unwrap_or("AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8");
     let tor = *state.tor_enabled.read().await;
     if !tor {
-        if let Ok(data) = innertube_android_request(client, "player", key, serde_json::json!({ "videoId": id })).await {
-            let status = data.get("playabilityStatus").and_then(|s| s.get("status")).and_then(|v| v.as_str()).unwrap_or("unknown");
-            server_log!("[download] Android status {} pour {}", status, id);
-            if status == "OK" {
-                if let Some(res) = pick_audio_format(&data, client, state).await {
-                    if let Some(total) = probe_audio_url(client, &res.0).await {
-                        server_log!("[download] audio URL via Android (probe OK, {} bytes) pour {}", total, id);
-                        return Some((res.0, res.1, total));
+        match innertube_android_request(client, "player", key, serde_json::json!({ "videoId": id })).await {
+            Ok(data) => {
+                let status = data.get("playabilityStatus").and_then(|s| s.get("status")).and_then(|v| v.as_str()).unwrap_or("unknown");
+                server_log!("[download] Android status {} pour {}", status, id);
+                if status == "OK" {
+                    if let Some(res) = pick_audio_format(&data, client, state).await {
+                        server_log!("[download] audio URL via Android pour {}", id);
+                        return Some((res.0, res.1, 0));
                     }
-                    server_log!("[download] audio URL via Android probe KO, fallback pour {}", id);
                 }
             }
+            Err(e) => server_log!("[download] audio: android ERR {}", e),
         }
     }
     if !tor {
-        if let Ok(data) = innertube_client_request(
+        match innertube_client_request(
             client, "player", key,
             IOS_CLIENT_NAME, IOS_CLIENT_VERSION, "5",
             "com.google.ios.youtube/21.10.2 (iPhone14,3; U; CPU iOS 18_2 like Mac OS X)",
             serde_json::json!({ "videoId": id, "deviceMake": "Apple", "deviceModel": IOS_DEVICE_MODEL, "osName": "iPhone", "osVersion": "18.2" }),
         ).await {
-            let status = data.get("playabilityStatus").and_then(|s| s.get("status")).and_then(|v| v.as_str()).unwrap_or("unknown");
-            server_log!("[download] iOS status {} pour {}", status, id);
-            if status == "OK" {
-                if let Some(res) = pick_audio_format(&data, client, state).await {
-                    if let Some(total) = probe_audio_url(client, &res.0).await {
-                        server_log!("[download] audio URL via iOS (probe OK, {} bytes) pour {}", total, id);
-                        return Some((res.0, res.1, total));
+            Ok(data) => {
+                let status = data.get("playabilityStatus").and_then(|s| s.get("status")).and_then(|v| v.as_str()).unwrap_or("unknown");
+                server_log!("[download] iOS status {} pour {}", status, id);
+                if status == "OK" {
+                    if let Some(res) = pick_audio_format(&data, client, state).await {
+                        server_log!("[download] audio URL via iOS pour {}", id);
+                        return Some((res.0, res.1, 0));
                     }
-                    server_log!("[download] audio URL via iOS probe KO, fallback pour {}", id);
                 }
             }
+            Err(e) => server_log!("[download] audio: iOS ERR {}", e),
         }
     }
-    if let Ok(data) = watch_page_stream(client, id).await {
-        if let Some(res) = pick_audio_format(&data, client, state).await {
-            if let Some(total) = probe_audio_url(client, &res.0).await {
-                server_log!("[download] audio URL via watch page (probe OK, {} bytes) pour {}", total, id);
-                return Some((res.0, res.1, total));
+    match watch_page_stream(client, id).await {
+        Ok(data) => {
+            if let Some(res) = pick_audio_format(&data, client, state).await {
+                server_log!("[download] audio URL via watch page pour {}", id);
+                return Some((res.0, res.1, 0));
             }
-            server_log!("[download] audio URL via watch page probe KO, fallback pour {}", id);
         }
+        Err(e) => server_log!("[download] audio: watch ERR {}", e),
     }
     if !tor {
-        if let Ok(data) = innertube_request(client, key, "player", serde_json::json!({ "videoId": id })).await {
-            let status = data.get("playabilityStatus").and_then(|s| s.get("status")).and_then(|v| v.as_str()).unwrap_or("unknown");
-            if status == "OK" {
-                if let Some(res) = pick_audio_format(&data, client, state).await {
-                    if let Some(total) = probe_audio_url(client, &res.0).await {
-                        server_log!("[download] audio URL via WEB (probe OK, {} bytes) pour {}", total, id);
-                        return Some((res.0, res.1, total));
+        match innertube_request(client, key, "player", serde_json::json!({ "videoId": id })).await {
+            Ok(data) => {
+                let status = data.get("playabilityStatus").and_then(|s| s.get("status")).and_then(|v| v.as_str()).unwrap_or("unknown");
+                if status == "OK" {
+                    if let Some(res) = pick_audio_format(&data, client, state).await {
+                        server_log!("[download] audio URL via WEB pour {}", id);
+                        return Some((res.0, res.1, 0));
                     }
-                    server_log!("[download] audio URL via WEB probe KO pour {}", id);
                 }
             }
+            Err(e) => server_log!("[download] audio: web ERR {}", e),
         }
+    }
+    // Repli sur la cascade éprouvée de /stream (résout fiablement sur ce réseau).
+    if let Some(url) = resolve_stream_url(state, id).await {
+        server_log!("[download] audio URL via resolve_stream_url pour {}", id);
+        return Some((url, "mp4".to_string(), 0));
+    }
+    None
+}
+
+async fn resolve_audio_dl_url(state: &ServerState, id: &str) -> Option<(String, String)> {
+    let client = &state.client;
+    let key = state.innertube_key.as_deref().unwrap_or("AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8");
+    let tor = *state.tor_enabled.read().await;
+    if !tor {
+        match innertube_android_request(client, "player", key, serde_json::json!({ "videoId": id })).await {
+            Ok(data) => {
+                let status = data.get("playabilityStatus").and_then(|s| s.get("status")).and_then(|v| v.as_str()).unwrap_or("unknown");
+                server_log!("[audio-dl] android status {} pour {}", status, id);
+                if status == "OK" {
+                    if let Some((u, ext, itag)) = pick_lowest_progressive(&data, client, state).await {
+                        server_log!("[audio-dl] progressif itag {} (ranges OK) via Android pour {}", itag, id);
+                        return Some((u, ext));
+                    }
+                }
+            }
+            Err(e) => server_log!("[audio-dl] android ERR {}", e),
+        }
+    }
+    if let Some(u) = resolve_stream_url(state, id).await {
+        server_log!("[audio-dl] repli sur flux /stream (muxé, ranges OK) pour {}", id);
+        return Some((u, "mp4".to_string()));
     }
     None
 }
@@ -1342,6 +1488,11 @@ async fn resolve_video_url(state: &ServerState, id: &str) -> Option<(String, Str
                 }
             }
         }
+    }
+    // Repli sur la cascade éprouvée de /stream (résout fiablement sur ce réseau).
+    if let Some(url) = resolve_stream_url(state, id).await {
+        server_log!("[download] video URL via resolve_stream_url pour {}", id);
+        return Some((url, "mp4".to_string()));
     }
     None
 }
@@ -1936,6 +2087,21 @@ async fn handle_search(
         _ => return json_response(serde_json::json!({"error": "Paramètre 'q' manquant."}), StatusCode::BAD_REQUEST, None),
     };
     let origin = headers.get("origin").and_then(|v| v.to_str().ok());
+    const SEARCH_BUDGET: Duration = Duration::from_secs(22);
+    match tokio::time::timeout(SEARCH_BUDGET, run_search(state, q.clone(), origin)).await {
+        Ok(resp) => resp,
+        Err(_) => {
+            server_log!("[search] TIMEOUT après {}s ({})", SEARCH_BUDGET.as_secs(), q);
+            json_response(
+                serde_json::json!({"error": "Recherche expirée (délai de 22 s). Réessayez."}),
+                StatusCode::GATEWAY_TIMEOUT,
+                origin,
+            )
+        }
+    }
+}
+
+async fn run_search(state: ServerState, q: String, origin: Option<&str>) -> Response {
     let cache_key = q.to_lowercase();
     {
         let cache = state.search_cache.read().await;
@@ -2216,6 +2382,262 @@ async fn handle_local(
     (StatusCode::OK, resp_headers, data).into_response()
 }
 
+fn valid_status_key(k: &str) -> bool {
+    let stripped = k
+        .strip_suffix("-audio")
+        .or_else(|| k.strip_suffix("-video"));
+    match stripped {
+        Some(id) if id.len() == 11 => id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
+        _ => false,
+    }
+}
+
+async fn is_download_paused(state: &ServerState, key: &str) -> bool {
+    state.paused_set.read().await.contains(key)
+}
+
+/// Attend tant que la clé est en pause (boucle toutes les 250 ms).
+async fn wait_if_paused(state: &ServerState, key: &str) {
+    loop {
+        if !is_download_paused(state, key).await {
+            return;
+        }
+        sleep(Duration::from_millis(250)).await;
+    }
+}
+
+#[cfg(unix)]
+fn signal_pid(pid: i32, sig: i32) {
+    unsafe {
+        libc::kill(pid, sig);
+    }
+    if pid > 0 {
+        server_log!("[pause] signal {} -> pid {}", sig, pid);
+    }
+}
+
+#[cfg(not(unix))]
+fn signal_pid(_pid: i32, _sig: i32) {}
+
+/// Lance `cmd` en draineant ses sorties et attend sa fin, mais de façon
+/// « pausable » : tant que la clé est en pause on ne fait que patienter (le
+/// processus est gelé par SIGSTOP depuis l'endpoint pause) et le timeout est
+/// étendu du temps passé en pause. Retourne un Output dont stderr contient la
+/// queue des sorties (pour les messages d'erreur yt-dlp).
+async fn wait_cmd_pausable(
+    state: &ServerState,
+    key: &str,
+    mut cmd: tokio::process::Command,
+    timeout: Duration,
+) -> Result<std::process::Output, String> {
+    use std::process::Stdio;
+    use std::collections::VecDeque;
+    use tokio::io::AsyncBufReadExt;
+
+    let mut cmd = cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => return Err(format!("spawn: {}", e)),
+    };
+    let pid = child.id().unwrap_or(0) as i32;
+    if pid > 0 {
+        state.child_pids.write().await.insert(key.to_string(), pid);
+    } else {
+        server_log!("[pause] pas de pid pour {}", key);
+    }
+
+    let tail = Arc::new(tokio::sync::Mutex::new(String::new()));
+    if let Some(oe) = child.stdout.take() {
+        let tail = Arc::clone(&tail);
+        tokio::spawn(async move {
+            let mut r = tokio::io::BufReader::new(oe).lines();
+            let mut lines: VecDeque<String> = VecDeque::new();
+            while let Ok(Some(l)) = r.next_line().await {
+                lines.push_back(l);
+                if lines.len() > 40 {
+                    lines.pop_front();
+                }
+                *tail.lock().await = lines.iter().cloned().collect::<Vec<_>>().join("\n");
+            }
+        });
+    }
+    if let Some(ee) = child.stderr.take() {
+        let tail = Arc::clone(&tail);
+        tokio::spawn(async move {
+            let mut r = tokio::io::BufReader::new(ee).lines();
+            let mut lines: VecDeque<String> = VecDeque::new();
+            while let Ok(Some(l)) = r.next_line().await {
+                lines.push_back(l);
+                if lines.len() > 40 {
+                    lines.pop_front();
+                }
+                *tail.lock().await = lines.iter().cloned().collect::<Vec<_>>().join("\n");
+            }
+        });
+    }
+
+    let start = Instant::now();
+    let mut paused_acc = Duration::ZERO;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                state.child_pids.write().await.remove(key);
+                return Ok(std::process::Output {
+                    status,
+                    stdout: Vec::new(),
+                    stderr: tail.lock().await.clone().into_bytes(),
+                });
+            }
+            Ok(None) => {}
+            Err(e) => {
+                state.child_pids.write().await.remove(key);
+                return Err(format!("wait: {}", e));
+            }
+        }
+        if is_download_paused(state, key).await {
+            paused_acc += Duration::from_millis(1000);
+        }
+        if start.elapsed() > timeout + paused_acc {
+            let _ = child.kill().await;
+            state.child_pids.write().await.remove(key);
+            return Err("__TIMEOUT__".into());
+        }
+        sleep(Duration::from_millis(1000)).await;
+    }
+}
+
+/// Retraite un échec d'écriture ponctuel (EIO = stockage FUSE endormi sous
+/// Android, EAGAIN, erreurs transitoires) : on patiente brièvement puis on
+/// réessaie, jusqu'à `max_retries` fois avant de rendre l'erreur finale.
+fn resilient_write(file: &mut std::fs::File, data: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut attempt = 0u32;
+    loop {
+        match file.write_all(data) {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                let transient = matches!(e.raw_os_error(), Some(5) | Some(11) | Some(28));
+                if transient && attempt < 4 {
+                    attempt += 1;
+                    std::thread::sleep(Duration::from_millis(400 * u64::from(attempt)));
+                    continue;
+                }
+                return Err(e);
+            }
+        }
+    }
+}
+
+/// Télécharge une URL YouTube en flux UNIQUE non borné, en HTTP/1.1.
+/// C'est le chemin qui fonctionne réellement sur ce réseau : les URLs servies
+/// par /stream (Android VR / watch page, non plafonnées) acceptent un GET
+/// ouvert, contrairement aux URLs itag 140 "Android" qui ne servent qu'~1 Mo
+/// de ranges puis répondent 403 (limite sans jeton P.O.T.). HTTP/1.1 évite
+/// l'erreur "error decoding response body" du HTTP/2. Pause intégrée entre
+/// les morceaux écrits sur disque.
+fn parse_content_range_total(cr: &str) -> Option<u64> {
+    cr.split('/').last().and_then(|s| s.trim().parse::<u64>().ok()).filter(|n| *n > 0)
+}
+
+async fn stream_ranges_pausable<F>(
+    state: &ServerState,
+    key: &str,
+    url: &str,
+    chunk: u64,
+    progress_base: f64,
+    progress_span: f64,
+    size_hint: u64,
+    mut write: F,
+) -> Result<u64, String>
+where
+    F: FnMut(&[u8]) -> std::io::Result<()>,
+{
+    let chunk = chunk.max(1);
+    let mut pos: u64 = 0;
+    let mut total: Option<u64> = None;
+    let mut last_pct: u32 = 0;
+    let mut seg_retries: u32 = 0;
+    loop {
+        if let Some(t) = total {
+            if pos >= t {
+                break;
+            }
+        }
+        wait_if_paused(state, key).await;
+        let end = total.map(|t| (pos + chunk - 1).min(t - 1)).unwrap_or(pos + chunk - 1);
+        let range = if end > pos { format!("bytes={}-{}", pos, end) } else { format!("bytes={}-", pos) };
+        let resp = state
+            .client
+            .get(url)
+            .version(reqwest::Version::HTTP_11)
+            .header("User-Agent", UA)
+            .header("Referer", "https://www.youtube.com/")
+            .header("Origin", "https://www.youtube.com")
+            .header("Range", &range)
+            .send()
+            .await
+            .map_err(|e| format!("Erreur de téléchargement: {}", e))?;
+        let status = resp.status();
+        if status != reqwest::StatusCode::PARTIAL_CONTENT && !status.is_success() {
+            seg_retries += 1;
+            if seg_retries >= 3 {
+                let url_trunc: String = url.chars().take(140).collect();
+                server_log!("[range] HTTP {} (épuisé) pour {}", status, url_trunc);
+                return Err(format!("Erreur de téléchargement (HTTP {})", status));
+            }
+            server_log!("[range] HTTP {} retry ({}) à l'offset {}", status, seg_retries, pos);
+            sleep(Duration::from_millis(800)).await;
+            continue;
+        }
+        if status == reqwest::StatusCode::PARTIAL_CONTENT {
+            if let Some(cr) = resp.headers().get("content-range").and_then(|v| v.to_str().ok()) {
+                if let Some(t) = parse_content_range_total(cr) {
+                    total = Some(t);
+                }
+            }
+        }
+        let effective = (total.or_else(|| (size_hint > 0).then_some(size_hint))).map(|t| t.max(1)).unwrap_or(5_000_000) as f64;
+        let mut bytes = resp.bytes_stream();
+        let mut got_this = 0u64;
+        let mut broke = false;
+        while let Some(part) = bytes.next().await {
+            wait_if_paused(state, key).await;
+            let part = match part {
+                Ok(p) => p,
+                Err(e) => {
+                    server_log!("[range] coupure à l'offset {}: {}", pos, e);
+                    broke = true;
+                    break;
+                }
+            };
+            write(&part).map_err(|e| format!("Erreur d'écriture du fichier: {}", e))?;
+            pos += part.len() as u64;
+            got_this += part.len() as u64;
+            let pct = (progress_base + (pos as f64 / effective) * progress_span).min(progress_base + progress_span) as u32;
+            if pct != last_pct {
+                last_pct = pct;
+                state.progress_map.write().await.insert(key.to_string(), pct as f64);
+            }
+        }
+        if broke {
+            seg_retries += 1;
+            if seg_retries >= 3 {
+                return Err("Connexion interrompue pendant le téléchargement (3 essais)".into());
+            }
+            continue;
+        }
+        seg_retries = 0;
+        if status == reqwest::StatusCode::PARTIAL_CONTENT && total.is_none() && got_this < chunk {
+            total = Some(pos);
+        }
+        if status != reqwest::StatusCode::PARTIAL_CONTENT {
+            total = Some(pos);
+        }
+    }
+    server_log!("[range] terminé après {} octets", pos);
+    Ok(pos)
+}
+
 async fn handle_download(
     State(state): State<ServerState>,
     headers: HeaderMap,
@@ -2228,16 +2650,41 @@ async fn handle_download(
     let fmt = body.format.as_deref().unwrap_or("audio");
     let status_key = format!("{}-{}", body.video_id, fmt);
     state.progress_map.write().await.insert(status_key.clone(), 0.0);
-    let target_dir = if fmt == "video" {
+    state.paused_set.write().await.remove(&status_key);
+    state.child_pids.write().await.remove(&status_key);
+    let mut target_dir = if fmt == "video" {
         state.output_dir.join("Video")
     } else {
         state.output_dir.join("Audio")
     };
     if let Err(e) = fs::create_dir_all(&target_dir) {
-        state.progress_map.write().await.remove(&status_key);
-        return json_response(serde_json::json!({"success": false, "error": format!("Impossible de créer le dossier de destination: {}", e)}), StatusCode::INTERNAL_SERVER_ERROR, origin);
+        // Fallback : si le dossier par défaut est inaccessible (scoped storage /
+        // permissions), on bascule vers /storage/emulated/0/Download/MediaCLI
+        // qui reste écrivable en brut avec le legacy storage.
+        let fallback = PathBuf::from("/storage/emulated/0/Download/MediaCLI")
+            .join(if fmt == "video" { "Video" } else { "Audio" });
+        match fs::create_dir_all(&fallback) {
+            Ok(_) => {
+                server_log!("[download] fallback écriture MediaCLI -> {}", fallback.display());
+                target_dir = fallback;
+            }
+            Err(e2) => {
+                state.progress_map.write().await.remove(&status_key);
+                return json_response(serde_json::json!({"success": false, "error": format!("Impossible de créer le dossier de destination ({} puis {}): {}", target_dir.display(), fallback.display(), e2)}), StatusCode::INTERNAL_SERVER_ERROR, origin);
+            }
+        }
     }
     let safe_title = sanitize_filename(&body.title);
+
+    // Garde-fou : un stockage plein donne la pire expérience (échec en plein
+    // flux). On refuse proprement dès le départ s'il reste moins de 200 Mo.
+    if let Some(free) = free_space_bytes(&target_dir) {
+        if free < 200 * 1024 * 1024 {
+            state.progress_map.write().await.remove(&status_key);
+            let mb = free / (1024 * 1024);
+            return json_response(serde_json::json!({"success": false, "error": format!("Stockage insuffisant ({} Mo libres sur le dossier de destination). Libérez de l'espace puis réessayez.", mb)}), StatusCode::INSUFFICIENT_STORAGE, origin);
+        }
+    }
 
     let ytdlp = yt_dlp_path(&state);
     let has_ytdlp = new_cmd(&ytdlp)
@@ -2246,6 +2693,7 @@ async fn handle_download(
         .await
         .map(|o| o.status.success())
         .unwrap_or(false);
+    server_log!("[download] {} via {} pour {}", fmt, if has_ytdlp { "yt-dlp" } else { "flux direct" }, body.video_id);
 
     if has_ytdlp {
         let ffmpeg = ffmpeg_path(&state);
@@ -2268,22 +2716,21 @@ async fn handle_download(
                 args.push("--socket-timeout".into());
                 args.push("120".into());
             }
-            let output = tokio::time::timeout(Duration::from_secs(300), new_cmd(&ytdlp).args(&args).output()).await;
+            let mut cmd = new_cmd(&ytdlp);
+            cmd.args(&args);
+            let output = wait_cmd_pausable(&state, &status_key, cmd, Duration::from_secs(300)).await;
             match output {
-                Ok(Ok(o)) if o.status.success() => {}
-                Ok(Ok(o)) => {
+                Ok(o) if o.status.success() => {}
+                Ok(o) => {
                     let stderr = String::from_utf8_lossy(&o.stderr).trim().to_string();
                     let msg = if stderr.is_empty() { "Erreur de téléchargement audio".into() } else { stderr };
                     state.progress_map.write().await.remove(&status_key);
                     return json_response(serde_json::json!({"success": false, "error": msg}), StatusCode::INTERNAL_SERVER_ERROR, origin);
                 }
-                Ok(Err(e)) => {
+                Err(e) => {
+                    let msg = if e == "__TIMEOUT__" { "Timeout du téléchargement audio (5 min)".into() } else { format!("Impossible de lancer yt-dlp: {}", e) };
                     state.progress_map.write().await.remove(&status_key);
-                    return json_response(serde_json::json!({"success": false, "error": format!("Impossible de lancer yt-dlp: {}", e)}), StatusCode::INTERNAL_SERVER_ERROR, origin);
-                }
-                Err(_) => {
-                    state.progress_map.write().await.remove(&status_key);
-                    return json_response(serde_json::json!({"success": false, "error": "Timeout du téléchargement audio (5 min)"}), StatusCode::INTERNAL_SERVER_ERROR, origin);
+                    return json_response(serde_json::json!({"success": false, "error": msg}), StatusCode::INTERNAL_SERVER_ERROR, origin);
                 }
             }
             state.progress_map.write().await.insert(status_key.clone(), 80.0);
@@ -2314,6 +2761,7 @@ async fn handle_download(
             let _ = fs::remove_file(&temp_file);
             match conv_output {
                 Ok(Ok(o)) if o.status.success() => {
+                    state.paused_set.write().await.remove(&status_key);
                     state.progress_map.write().await.insert(status_key, 100.0);
                     json_response(serde_json::json!({"success": true, "path": final_path.to_string_lossy()}), StatusCode::OK, origin)
                 }
@@ -2346,20 +2794,24 @@ async fn handle_download(
                 args.push("--socket-timeout".into());
                 args.push("300".into());
             }
-            let output = tokio::time::timeout(Duration::from_secs(600), new_cmd(&ytdlp).args(&args).output()).await;
+            let mut cmd = new_cmd(&ytdlp);
+            cmd.args(&args);
+            let output = wait_cmd_pausable(&state, &status_key, cmd, Duration::from_secs(600)).await;
             match output {
-                Ok(Ok(o)) if o.status.success() => {
+                Ok(o) if o.status.success() => {
+                    state.paused_set.write().await.remove(&status_key);
                     state.progress_map.write().await.insert(status_key, 100.0);
                     json_response(serde_json::json!({"success": true, "path": final_path.to_string_lossy()}), StatusCode::OK, origin)
                 }
                 _ => {
                     let err = match output {
-                        Ok(Ok(o)) => {
+                        Ok(o) => {
                             let stderr = String::from_utf8_lossy(&o.stderr).trim().to_string();
                             if stderr.is_empty() { "Erreur de téléchargement vidéo".into() } else { stderr }
                         }
-                        Ok(Err(e)) => format!("Impossible de lancer yt-dlp: {}", e),
-                        Err(_) => "Timeout du téléchargement vidéo (10 min)".into(),
+                        Err(e) => {
+                            if e == "__TIMEOUT__" { "Timeout du téléchargement vidéo (10 min)".into() } else { format!("Impossible de lancer yt-dlp: {}", e) }
+                        }
                     };
                     state.progress_map.write().await.remove(&status_key);
                     json_response(serde_json::json!({"success": false, "error": err}), StatusCode::INTERNAL_SERVER_ERROR, origin)
@@ -2389,58 +2841,20 @@ async fn handle_download(
                 return json_response(serde_json::json!({"success": false, "error": format!("Erreur d'écriture du fichier: {}", e)}), StatusCode::INTERNAL_SERVER_ERROR, origin);
             }
         };
-        let mut downloaded: u64 = 0;
-        let mut last_pct: u32 = 0;
-        server_log!("[download] req open-range vidéo pour {}", body.video_id);
-        let resp = state.client
-            .get(&stream_url)
-            .header("User-Agent", UA)
-            .header("Referer", "https://www.youtube.com/")
-            .header("Origin", "https://www.youtube.com")
-            .header("Range", "bytes=0-")
-            .send()
-            .await;
-        let mut response = match resp {
-            Ok(r) if r.status().is_success() => r,
-            Ok(r) => {
-                server_log!("[download] HTTP {} pour {} (url: {})", r.status(), body.video_id, stream_url);
-                let _ = std::fs::remove_file(&final_path);
-                state.progress_map.write().await.remove(&status_key);
-                return json_response(serde_json::json!({"success": false, "error": format!("Erreur de téléchargement (HTTP {})", r.status())}), StatusCode::INTERNAL_SERVER_ERROR, origin);
+        server_log!("[download] flux complet vidéo pour {}", body.video_id);
+        let dl_url = stream_url.clone();
+        match stream_ranges_pausable(&state, &status_key, &dl_url, 4 * 1024 * 1024, 20.0, 80.0, 60_000_000, |part: &[u8]| resilient_write(&mut file, part)).await {
+            Ok(_) => {
+                state.paused_set.write().await.remove(&status_key);
+                state.progress_map.write().await.insert(status_key, 100.0);
             }
-            Err(e) => {
-                server_log!("[download] échec requête pour {}: {}", body.video_id, e);
+            Err(msg) => {
                 let _ = std::fs::remove_file(&final_path);
+                server_log!("[download] échec {}: {}", body.video_id, msg);
                 state.progress_map.write().await.remove(&status_key);
-                return json_response(serde_json::json!({"success": false, "error": format!("Erreur de téléchargement: {}", e)}), StatusCode::INTERNAL_SERVER_ERROR, origin);
-            }
-        };
-        loop {
-            match response.chunk().await {
-                Ok(Some(chunk)) => {
-                    if let Err(e) = file.write_all(&chunk) {
-                        let _ = std::fs::remove_file(&final_path);
-                        server_log!("[download] erreur écriture {}: {}", body.video_id, e);
-                        state.progress_map.write().await.remove(&status_key);
-                        return json_response(serde_json::json!({"success": false, "error": format!("Erreur d'écriture du fichier: {}", e)}), StatusCode::INTERNAL_SERVER_ERROR, origin);
-                    }
-                    downloaded += chunk.len() as u64;
-                    let pct = (20.0 + (downloaded as f64 / 60_000_000.0) * 80.0).min(100.0) as u32;
-                    if pct != last_pct {
-                        last_pct = pct;
-                        state.progress_map.write().await.insert(status_key.clone(), pct as f64);
-                    }
-                }
-                Ok(None) => break,
-                Err(e) => {
-                    let _ = std::fs::remove_file(&final_path);
-                    server_log!("[download] échec flux {}: {}", body.video_id, e);
-                    state.progress_map.write().await.remove(&status_key);
-                    return json_response(serde_json::json!({"success": false, "error": format!("Erreur de téléchargement: {}", e)}), StatusCode::INTERNAL_SERVER_ERROR, origin);
-                }
+                return json_response(serde_json::json!({"success": false, "error": msg}), StatusCode::INTERNAL_SERVER_ERROR, origin);
             }
         }
-        state.progress_map.write().await.insert(status_key, 100.0);
         json_response(serde_json::json!({"success": true, "path": final_path.to_string_lossy()}), StatusCode::OK, origin)
     }
 }
@@ -2455,11 +2869,10 @@ async fn download_audio_with_ffmpeg(
 ) -> Response {
     use std::io::Write;
 
-    let temp_path = target_dir.join(format!(".tmp_{}.mp4", body.video_id));
     let final_path = target_dir.join(format!("{}.mp3", safe_title));
 
-    let (url, _ext) = match resolve_video_url(state, &body.video_id).await {
-        Some(u) => u,
+    let (url, temp_ext) = match resolve_audio_dl_url(state, &body.video_id).await {
+        Some((u, e)) => (u, e),
         None => {
             state.progress_map.write().await.remove(status_key);
             return json_response(serde_json::json!({"success": false, "error": "Aucun flux audio disponible pour le téléchargement"}), StatusCode::BAD_GATEWAY, origin);
@@ -2467,6 +2880,8 @@ async fn download_audio_with_ffmpeg(
     };
     state.progress_map.write().await.insert(status_key.to_string(), 8.0);
 
+    server_log!("[audio-dl] téléchargement audio (plages) pour {}", body.video_id);
+    let temp_path = target_dir.join(format!(".tmp_{}.{}", body.video_id, temp_ext));
     let mut file = match std::fs::File::create(&temp_path) {
         Ok(f) => f,
         Err(e) => {
@@ -2474,63 +2889,49 @@ async fn download_audio_with_ffmpeg(
             return json_response(serde_json::json!({"success": false, "error": format!("Erreur d'écriture du fichier: {}", e)}), StatusCode::INTERNAL_SERVER_ERROR, origin);
         }
     };
-
-    server_log!("[audio-ffmpeg] téléchargement MP4 combiné pour {}", body.video_id);
-    let resp = state.client
-        .get(&url)
-        .header("User-Agent", UA)
-        .header("Referer", "https://www.youtube.com/")
-        .header("Origin", "https://www.youtube.com")
-        .header("Range", "bytes=0-")
-        .send()
-        .await;
-    let mut response = match resp {
-        Ok(r) if r.status().is_success() => r,
-        Ok(r) => {
-            server_log!("[audio-ffmpeg] HTTP {} pour {} (url: {})", r.status(), body.video_id, url);
+    match stream_ranges_pausable(state, status_key, &url, 2 * 1024 * 1024, 8.0, 82.0, 5_000_000, |part: &[u8]| resilient_write(&mut file, part)).await {
+        Ok(_) => {}
+        Err(msg) => {
             let _ = std::fs::remove_file(&temp_path);
+            server_log!("[audio-dl] échec {}: {}", body.video_id, msg);
             state.progress_map.write().await.remove(status_key);
-            return json_response(serde_json::json!({"success": false, "error": format!("Erreur de téléchargement (HTTP {})", r.status())}), StatusCode::INTERNAL_SERVER_ERROR, origin);
-        }
-        Err(e) => {
-            server_log!("[audio-ffmpeg] échec requête pour {}: {}", body.video_id, e);
-            let _ = std::fs::remove_file(&temp_path);
-            state.progress_map.write().await.remove(status_key);
-            return json_response(serde_json::json!({"success": false, "error": format!("Erreur de téléchargement: {}", e)}), StatusCode::INTERNAL_SERVER_ERROR, origin);
-        }
-    };
-    let mut downloaded: u64 = 0;
-    let mut last_pct: u32 = 0;
-    loop {
-        match response.chunk().await {
-            Ok(Some(chunk)) => {
-                if let Err(e) = file.write_all(&chunk) {
-                    let _ = std::fs::remove_file(&temp_path);
-                    server_log!("[audio-ffmpeg] erreur écriture {}: {}", body.video_id, e);
-                    state.progress_map.write().await.remove(status_key);
-                    return json_response(serde_json::json!({"success": false, "error": format!("Erreur d'écriture du fichier: {}", e)}), StatusCode::INTERNAL_SERVER_ERROR, origin);
-                }
-                downloaded += chunk.len() as u64;
-                let pct = (8.0 + (downloaded as f64 / 40_000_000.0) * 82.0).min(90.0) as u32;
-                if pct != last_pct {
-                    last_pct = pct;
-                    state.progress_map.write().await.insert(status_key.to_string(), pct as f64);
-                }
-            }
-            Ok(None) => break,
-            Err(e) => {
-                let _ = std::fs::remove_file(&temp_path);
-                server_log!("[audio-ffmpeg] échec flux {}: {}", body.video_id, e);
-                state.progress_map.write().await.remove(status_key);
-                return json_response(serde_json::json!({"success": false, "error": format!("Erreur de téléchargement: {}", e)}), StatusCode::INTERNAL_SERVER_ERROR, origin);
-            }
+            return json_response(serde_json::json!({"success": false, "error": msg}), StatusCode::INTERNAL_SERVER_ERROR, origin);
         }
     }
     drop(file);
+    state.paused_set.write().await.remove(status_key);
     state.progress_map.write().await.insert(status_key.to_string(), 90.0);
 
     let ffmpeg = ffmpeg_path(state);
-    server_log!("[audio-ffmpeg] conversion avec {} pour {}", ffmpeg, body.video_id);
+    let ffmpeg_ok = {
+        let mut probe_cmd = new_cmd(&ffmpeg);
+        probe_cmd.arg("-version");
+        tokio::time::timeout(Duration::from_secs(8), probe_cmd.output())
+            .await
+            .map(|r| r.map(|o| o.status.success()).unwrap_or(false))
+            .unwrap_or(false)
+    };
+    if !ffmpeg_ok {
+        // Pas de ffmpeg disponible : on conserve le fichier audio tel quel
+        // (m4a/webm/mp4) au lieu d'échouer — il reste lisible partout.
+        let keep_ext = temp_ext;
+        let keep_path = target_dir.join(format!("{}.{}", safe_title, keep_ext));
+        match std::fs::rename(&temp_path, &keep_path) {
+            Ok(_) => {
+                state.paused_set.write().await.remove(status_key);
+                state.progress_map.write().await.insert(status_key.to_string(), 100.0);
+                server_log!("[audio-dl] ffmpeg absent — fichier audio gardé tel quel (.{}) pour {}", keep_ext, body.video_id);
+                return json_response(serde_json::json!({"success": true, "path": keep_path.to_string_lossy(), "note": "Aucun ffmpeg : fichier audio téléchargé directement (pas de conversion mp3)."}), StatusCode::OK, origin);
+            }
+            Err(e) => {
+                let _ = std::fs::remove_file(&temp_path);
+                state.progress_map.write().await.remove(status_key);
+                return json_response(serde_json::json!({"success": false, "error": format!("Erreur de sauvegarde du fichier audio: {}", e)}), StatusCode::INTERNAL_SERVER_ERROR, origin);
+            }
+        }
+    }
+
+    server_log!("[audio-dl] conversion avec {} pour {}", ffmpeg, body.video_id);
     let mut cmd = new_cmd(&ffmpeg);
     let args: Vec<String> = vec![
         "-y".into(),
@@ -2551,6 +2952,7 @@ async fn download_audio_with_ffmpeg(
     let _ = std::fs::remove_file(&temp_path);
     match conv {
         Ok(Ok(o)) if o.status.success() => {
+            state.paused_set.write().await.remove(status_key);
             state.progress_map.write().await.insert(status_key.to_string(), 100.0);
             json_response(serde_json::json!({"success": true, "path": final_path.to_string_lossy()}), StatusCode::OK, origin)
         }
@@ -2581,7 +2983,55 @@ async fn handle_progress(
     let origin = headers.get("origin").and_then(|v| v.to_str().ok());
     let id = params.id.unwrap_or_default();
     let progress = state.progress_map.read().await.get(&id).copied().unwrap_or(0.0);
-    json_response(serde_json::json!({"progress": progress}), StatusCode::OK, origin)
+    let paused = state.paused_set.read().await.contains(&id);
+    json_response(serde_json::json!({"progress": progress, "paused": paused}), StatusCode::OK, origin)
+}
+
+async fn handle_pause(
+    State(state): State<ServerState>,
+    headers: HeaderMap,
+    Json(body): Json<PauseBody>,
+) -> Response {
+    let origin = headers.get("origin").and_then(|v| v.to_str().ok());
+    let id = body.download_id.unwrap_or_default();
+    if !valid_status_key(&id) {
+        return json_response(serde_json::json!({"error": "id invalide."}), StatusCode::BAD_REQUEST, origin);
+    }
+    let mut set = state.paused_set.write().await;
+    let first = !set.contains(&id);
+    set.insert(id.clone());
+    drop(set);
+    if let Some(pid) = state.child_pids.read().await.get(&id).copied() {
+        #[cfg(unix)]
+        signal_pid(pid, libc::SIGSTOP);
+        #[cfg(not(unix))]
+        signal_pid(pid, 0);
+    }
+    server_log!("[pause] {} ({} en pause)", id, if first { "nouvelle" } else { "déjà" });
+    json_response(serde_json::json!({"ok": true, "paused": true}), StatusCode::OK, origin)
+}
+
+async fn handle_resume(
+    State(state): State<ServerState>,
+    headers: HeaderMap,
+    Json(body): Json<PauseBody>,
+) -> Response {
+    let origin = headers.get("origin").and_then(|v| v.to_str().ok());
+    let id = body.download_id.unwrap_or_default();
+    if !valid_status_key(&id) {
+        return json_response(serde_json::json!({"error": "id invalide."}), StatusCode::BAD_REQUEST, origin);
+    }
+    let mut set = state.paused_set.write().await;
+    let was = set.remove(&id);
+    drop(set);
+    if let Some(pid) = state.child_pids.read().await.get(&id).copied() {
+        #[cfg(unix)]
+        signal_pid(pid, libc::SIGCONT);
+        #[cfg(not(unix))]
+        signal_pid(pid, 0);
+    }
+    server_log!("[pause] {} ({} en pause)", id, if was { "plus" } else { "jamais" });
+    json_response(serde_json::json!({"ok": true, "paused": false}), StatusCode::OK, origin)
 }
 
 async fn handle_open_folder(
@@ -2837,6 +3287,95 @@ async fn handle_scan_folders(
     json_response(serde_json::json!({"folders": dirs}), StatusCode::OK, origin)
 }
 
+fn run_local_search(query: &str) -> Vec<serde_json::Value> {
+    let q = query.trim().to_lowercase();
+    let mut files: Vec<serde_json::Value> = Vec::new();
+    let max = 800;
+    #[cfg(target_os = "android")]
+    let max_depth = 8;
+    #[cfg(not(target_os = "android"))]
+    let max_depth = 6;
+    #[cfg(target_os = "android")]
+    let mut budget = ScanBudget::android();
+    #[cfg(not(target_os = "android"))]
+    let mut budget = ScanBudget::new();
+
+    fn walk(
+        base: &Path,
+        depth: usize,
+        q: &str,
+        max: usize,
+        files: &mut Vec<serde_json::Value>,
+        max_depth: usize,
+        budget: &mut ScanBudget,
+    ) {
+        if depth > max_depth || budget.take() {
+            return;
+        }
+        let entries = match fs::read_dir(base) {
+            Ok(e) => e,
+            Err(_) => return,
+        };
+        for entry in entries.flatten() {
+            if files.len() >= max || budget.take() {
+                break;
+            }
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            let path = entry.path();
+            if path.is_dir() {
+                if EXCLUDED_DIRS.contains(&name_str.to_lowercase().as_str()) {
+                    continue;
+                }
+                walk(&path, depth + 1, q, max, files, max_depth, budget);
+            } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                let ext_lower = ext.to_lowercase();
+                if (AUDIO_EXT.contains(&ext_lower.as_str()) || VIDEO_EXT.contains(&ext_lower.as_str()))
+                    && name_str.to_lowercase().contains(q)
+                {
+                    let folder = path.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+                    let size_label = fs::metadata(&path).map(|m| format_size(m.len())).unwrap_or_default();
+                    files.push(serde_json::json!({
+                        "name": name_str.to_string(),
+                        "path": path.to_string_lossy().to_string(),
+                        "folder": folder,
+                        "size_label": size_label,
+                    }));
+                }
+            }
+        }
+    }
+
+    for r in local_roots() {
+        if files.len() >= max {
+            break;
+        }
+        walk(&r, 0, &q, max, &mut files, max_depth, &mut budget);
+    }
+    files.sort_by(|a, b| {
+        let an = a.get("name").and_then(|v| v.as_str()).unwrap_or("");
+        let bn = b.get("name").and_then(|v| v.as_str()).unwrap_or("");
+        an.cmp(bn)
+    });
+    files
+}
+
+async fn handle_local_search(
+    State(_state): State<ServerState>,
+    Query(params): Query<LocalSearchParams>,
+    headers: HeaderMap,
+) -> Response {
+    let origin = headers.get("origin").and_then(|v| v.to_str().ok());
+    let q = params.q.unwrap_or_default();
+    if q.trim().is_empty() {
+        return json_response(serde_json::json!({"files": []}), StatusCode::OK, origin);
+    }
+    let files = tokio::task::spawn_blocking(move || run_local_search(&q))
+        .await
+        .unwrap_or_default();
+    json_response(serde_json::json!({"files": files}), StatusCode::OK, origin)
+}
+
 struct ScanBudget {
     entries_left: usize,
     start: Instant,
@@ -2871,19 +3410,7 @@ impl ScanBudget {
     }
 }
 
-fn run_scan_folders() -> Vec<FolderInfo> {
-    let mut dirs: Vec<FolderInfo> = Vec::new();
-    let mut seen: HashMap<String, (bool, bool, usize)> = HashMap::new();
-    let max = 5000;
-    #[cfg(target_os = "android")]
-    let max_depth = 8;
-    #[cfg(not(target_os = "android"))]
-    let max_depth = 6;
-    #[cfg(target_os = "android")]
-    let mut budget = ScanBudget::android();
-    #[cfg(not(target_os = "android"))]
-    let mut budget = ScanBudget::new();
-
+fn local_roots() -> Vec<PathBuf> {
     let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).unwrap_or_default();
     let mut roots: Vec<PathBuf> = Vec::new();
     if !home.is_empty() {
@@ -2913,6 +3440,23 @@ fn run_scan_folders() -> Vec<FolderInfo> {
             roots.push(root);
         }
     }
+    roots
+}
+
+fn run_scan_folders() -> Vec<FolderInfo> {
+    let mut dirs: Vec<FolderInfo> = Vec::new();
+    let mut seen: HashMap<String, (bool, bool, usize)> = HashMap::new();
+    let max = 5000;
+    #[cfg(target_os = "android")]
+    let max_depth = 8;
+    #[cfg(not(target_os = "android"))]
+    let max_depth = 6;
+    #[cfg(target_os = "android")]
+    let mut budget = ScanBudget::android();
+    #[cfg(not(target_os = "android"))]
+    let mut budget = ScanBudget::new();
+
+    let roots = local_roots();
 
     for r in &roots {
         if dirs.len() >= max || budget.take() {
@@ -2938,28 +3482,40 @@ fn run_scan_folders() -> Vec<FolderInfo> {
     dirs
 }
 
+async fn handle_errlog(
+    Query(params): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    let origin = headers.get("origin").and_then(|v| v.to_str().ok());
+    let tag = params.get("tag").map(|s| s.as_str()).unwrap_or("");
+    let m = params.get("m").map(|s| s.as_str()).unwrap_or("");
+    let b = params.get("b").map(|s| s.as_str()).unwrap_or("");
+    let when = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or_default();
+    let line = format!("[errlog {}] tag={} m={} href={}\n", when, tag, m, b);
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/storage/emulated/0/Download/mediacli_crash.txt")
+        .map(|mut f| {
+            use std::io::Write as _;
+            let _ = f.write_all(line.as_bytes());
+        });
+    json_response(serde_json::json!({"ok": true}), StatusCode::OK, origin)
+}
+
 async fn handle_ping(
     State(state): State<ServerState>,
     headers: HeaderMap,
 ) -> Response {
     let origin = headers.get("origin").and_then(|v| v.to_str().ok());
     let ytdlp = yt_dlp_path(&state);
-    let version = new_cmd(&ytdlp)
-        .args(["--version"])
-        .output()
-        .await
-        .ok()
-        .and_then(|o| {
-            if o.status.success() {
-                String::from_utf8(o.stdout).ok().map(|s| s.trim().to_string())
-            } else {
-                None
-            }
-        });
+    server_log!("[ping] pong");
     json_response(
         serde_json::json!({
             "ok": true,
-            "yt_dlp": version,
             "tor_enabled": *state.tor_enabled.read().await,
             "yt_dlp_path": ytdlp,
             "resource_dir": state.resource_dir.as_ref().map(|p| p.to_string_lossy().to_string()),
@@ -3153,6 +3709,149 @@ async fn handle_debug_audio(
     json_response(results, StatusCode::OK, origin)
 }
 
+async fn handle_debug_audio2(
+    State(state): State<ServerState>,
+    Query(params): Query<IdParams>,
+    headers: HeaderMap,
+) -> Response {
+    let origin = headers.get("origin").and_then(|v| v.to_str().ok());
+    let id = match params.id {
+        Some(id) if is_valid_video_id(&id) => id,
+        _ => return json_response(serde_json::json!({"error": "videoId invalide"}), StatusCode::BAD_REQUEST, origin),
+    };
+    let client = &state.client;
+    let key = state.innertube_key.as_deref().unwrap_or("AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8");
+    let mut results = serde_json::json!({"id": id});
+    server_log!("[debug-audio2] testing audio ranges multi-client pour {}", id);
+
+    let clients: Vec<(String, String, String, String, String, serde_json::Value)> = vec![
+        (
+            "android_vr".to_string(), "ANDROID_VR".to_string(), "1.57.29".to_string(), "28".to_string(),
+            "com.google.android.apps.youtube.vr.oculus/1.57.29 (Linux; U; Android 12; eureka-user Build/SQ3A.220605.009.A1) gzip".to_string(),
+            serde_json::json!({ "videoId": id, "contentCheckOk": true, "racyCheckOk": true }),
+        ),
+        (
+            "ios".to_string(), IOS_CLIENT_NAME.to_string(), IOS_CLIENT_VERSION.to_string(), "5".to_string(),
+            "com.google.ios.youtube/21.10.2 (iPhone14,3; U; CPU iOS 18_2 like Mac OS X)".to_string(),
+            serde_json::json!({ "videoId": id, "deviceMake": "Apple", "deviceModel": IOS_DEVICE_MODEL, "osName": "iPhone", "osVersion": "18.2" }),
+        ),
+        (
+            "web_embedded".to_string(), "WEB_EMBEDDED_PLAYER".to_string(), "1.20240620".to_string(), "56".to_string(),
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36".to_string(),
+            serde_json::json!({ "videoId": id, "contentCheckOk": true, "racyCheckOk": true,
+                "playbackContext": { "contentPlaybackContext": { "signatureTimestamp": 20073 } } }),
+        ),
+        (
+            "tv".to_string(), "TVHTML5".to_string(), "7.20240723.10.00".to_string(), "7".to_string(),
+            "Mozilla/5.0".to_string(),
+            serde_json::json!({ "videoId": id, "contentCheckOk": true, "racyCheckOk": true }),
+        ),
+        (
+            "web".to_string(), "WEB".to_string(), "2.20240101.00.00".to_string(), "5".to_string(),
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36".to_string(),
+            serde_json::json!({ "videoId": id, "contentCheckOk": true, "racyCheckOk": true }),
+        ),
+    ];
+
+    let mut clients_out: Vec<serde_json::Value> = Vec::new();
+    for (name, cname, cver, key_attr, ua, ctx) in clients {
+        let data = innertube_client_request(client, "player", key, &cname, &cver, &key_attr, &ua, ctx).await;
+        let data = match data {
+            Ok(d) => d,
+            Err(e) => {
+                clients_out.push(serde_json::json!({"client": name, "status": format!("req_err:{}", e)}));
+                continue;
+            }
+        };
+        let status = data.get("playabilityStatus").and_then(|s| s.get("status")).and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
+        if status != "OK" {
+            clients_out.push(serde_json::json!({"client": name, "status": status}));
+            continue;
+        }
+        match pick_audio_format(&data, client, &state).await {
+            Some((u, ext)) => {
+                let r0 = debug_fetch_range(client, &u, "bytes=0-262143", 1_000_000).await;
+                let r1m = debug_fetch_range(client, &u, "bytes=1048576-1310719", 1_000_000).await;
+                let r20m = debug_fetch_range(client, &u, "bytes=20971520-21233663", 1_000_000).await;
+                clients_out.push(serde_json::json!({
+                    "client": name, "status": status, "ext": ext,
+                    "host": u.split('/').nth(2).unwrap_or(""),
+                    "r_256k@0": format!("{}:{}", r0.0, r0.1),
+                    "r_256k@1M": format!("{}:{}", r1m.0, r1m.1),
+                    "r_256k@20M": format!("{}:{}", r20m.0, r20m.1),
+                    "cr_total": r0.2,
+                }));
+            }
+            None => {
+                clients_out.push(serde_json::json!({"client": name, "status": status, "audio": "aucun format audio"}));
+            }
+        }
+        if let Some((u, ext, itag)) = pick_lowest_progressive(&data, client, &state).await {
+            let r0 = debug_fetch_range(client, &u, "bytes=0-262143", 1_000_000).await;
+            let r1m = debug_fetch_range(client, &u, "bytes=1048576-1310719", 1_000_000).await;
+            let r20m = debug_fetch_range(client, &u, "bytes=20971520-21233663", 1_000_000).await;
+            clients_out.push(serde_json::json!({
+                "client": name, "type": "progressif", "itag": itag, "ext": ext,
+                "host": u.split('/').nth(2).unwrap_or(""),
+                "r_256k@0": format!("{}:{}", r0.0, r0.1),
+                "r_256k@1M": format!("{}:{}", r1m.0, r1m.1),
+                "r_256k@20M": format!("{}:{}", r20m.0, r20m.1),
+                "cr_total": r0.2,
+            }));
+        }
+    }
+    results["clients"] = serde_json::json!(clients_out);
+
+    match innertube_android_request(client, "player", key, serde_json::json!({ "videoId": id })).await {
+        Ok(data) => {
+            let status = data.get("playabilityStatus").and_then(|s| s.get("status")).and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
+            if status == "OK" {
+                if let Some((u, ext)) = pick_audio_format(&data, client, &state).await {
+                    let r0 = debug_fetch_range(client, &u, "bytes=0-262143", 1_000_000).await;
+                    let r1m = debug_fetch_range(client, &u, "bytes=1048576-1310719", 1_000_000).await;
+                    clients_out.push(serde_json::json!({
+                        "client": "android", "status": status, "ext": ext,
+                        "host": u.split('/').nth(2).unwrap_or(""),
+                        "r_256k@0": format!("{}:{}", r0.0, r0.1),
+                        "r_256k@1M": format!("{}:{}", r1m.0, r1m.1),
+                        "cr_total": r0.2,
+                    }));
+                }
+                if let Some((u, ext, itag)) = pick_lowest_progressive(&data, client, &state).await {
+                    let r0 = debug_fetch_range(client, &u, "bytes=0-262143", 1_000_000).await;
+                    let r1m = debug_fetch_range(client, &u, "bytes=1048576-1310719", 1_000_000).await;
+                    let r20m = debug_fetch_range(client, &u, "bytes=20971520-21233663", 1_000_000).await;
+                    clients_out.push(serde_json::json!({
+                        "client": "android", "type": "progressif", "itag": itag, "ext": ext,
+                        "host": u.split('/').nth(2).unwrap_or(""),
+                        "r_256k@0": format!("{}:{}", r0.0, r0.1),
+                        "r_256k@1M": format!("{}:{}", r1m.0, r1m.1),
+                        "r_256k@20M": format!("{}:{}", r20m.0, r20m.1),
+                        "cr_total": r0.2,
+                    }));
+                }
+            }
+        }
+        Err(e) => server_log!("[debug-audio2] android req_err: {}", e),
+    }
+    results["clients"] = serde_json::json!(clients_out);
+
+    if let Some(u) = resolve_stream_url(&state, &id).await {
+        let r0 = debug_fetch_range(client, &u, "bytes=0-262143", 1_000_000).await;
+        let r1m = debug_fetch_range(client, &u, "bytes=1048576-1310719", 1_000_000).await;
+        let r20m = debug_fetch_range(client, &u, "bytes=20971520-21233663", 1_000_000).await;
+        results["muxed_stream"] = serde_json::json!({
+            "host": u.split('/').nth(2).unwrap_or(""),
+            "r_256k@0": format!("{}:{}", r0.0, r0.1),
+            "r_256k@1M": format!("{}:{}", r1m.0, r1m.1),
+            "r_256k@20M": format!("{}:{}", r20m.0, r20m.1),
+        });
+    }
+
+    server_log!("[debug-audio2] done for {}", id);
+    json_response(results, StatusCode::OK, origin)
+}
+
 async fn handle_debug_stream(
     State(state): State<ServerState>,
     Query(params): Query<IdParams>,
@@ -3242,8 +3941,11 @@ pub async fn start_server(output_dir: PathBuf, resource_dir: Option<PathBuf>) {
     let client = reqwest::Client::builder()
         .danger_accept_invalid_certs(true)
         .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(20))
         .build()
         .unwrap_or_else(|_| reqwest::Client::new());
+
+    server_log!("[server] state en construction");
 
     let state = ServerState {
         output_dir,
@@ -3251,6 +3953,8 @@ pub async fn start_server(output_dir: PathBuf, resource_dir: Option<PathBuf>) {
         search_cache: Arc::new(RwLock::new(HashMap::new())),
         stream_cache: Arc::new(RwLock::new(HashMap::new())),
         progress_map: Arc::new(RwLock::new(HashMap::new())),
+        paused_set: Arc::new(RwLock::new(HashSet::new())),
+        child_pids: Arc::new(RwLock::new(HashMap::new())),
         tor_enabled: Arc::new(RwLock::new(false)),
         innertube_key,
         player_script_cache: Arc::new(RwLock::new(None)),
@@ -3268,21 +3972,351 @@ pub async fn start_server(output_dir: PathBuf, resource_dir: Option<PathBuf>) {
         .route("/local", get(handle_local))
         .route("/list-folder", get(handle_list_folder))
         .route("/scan-folders", get(handle_scan_folders))
+        .route("/local-search", get(handle_local_search))
         .route("/download", post(handle_download).options(handle_options))
+        .route("/download-pause", post(handle_pause).options(handle_options))
+        .route("/download-resume", post(handle_resume).options(handle_options))
         .route("/progress", get(handle_progress))
         .route("/open-folder", post(handle_open_folder).options(handle_options))
         .route("/proxy", post(handle_proxy).options(handle_options))
         .route("/proxy-status", get(handle_proxy_status))
         .route("/user-dirs", get(handle_user_dirs))
         .route("/ping", get(handle_ping))
+        .route("/netprobe", get(handle_netprobe))
+        .route("/errlog", get(handle_errlog).options(handle_options))
         .route("/debug-stream", get(handle_debug_stream))
         .route("/debug-audio", get(handle_debug_audio))
+        .route("/debug-audio2", get(handle_debug_audio2))
         .route("/debug-ffmpeg", get(handle_debug_ffmpeg))
         .route("/request-permissions", get(handle_request_permissions))
+        .layer(middleware::from_fn(log_requests))
         .with_state(state);
 
+    server_log!("[server] router ok");
+
     let addr = format!("127.0.0.1:{}", PORT);
-    println!("[server] Serveur MédiaCLI lancé sur http://{}", addr);
-    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    server_log!("[server] prepare serve (timer/rotation actifs)");
+
+    {
+        server_log!("[server] selftest outbound TCP 127.0.0.1:8787 (3s)...");
+        match tokio::time::timeout(
+            Duration::from_secs(3),
+            tokio::net::TcpStream::connect(("127.0.0.1", PORT)),
+        )
+        .await
+        {
+            Ok(Ok(stream)) => {
+                if let Ok(la) = stream.local_addr() {
+                    server_log!("[server] selftest OUTBOUND OK local={}", la);
+                }
+                drop(stream);
+            }
+            Ok(Err(e)) => server_log!("[server] selftest OUTBOUND ERR {}", e),
+            Err(_) => server_log!("[server] selftest OUTBOUND TIMEOUT => IO driver suspect"),
+        }
+    }
+
+    {
+        let hb_path = String::from("/storage/emulated/0/Download/mediacli_crash.txt");
+        tokio::spawn(async move {
+            let mut i: u32 = 0;
+            loop {
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                i += 1;
+                let msg = format!("[server] heartbeat #{}\n", i);
+                eprintln!("{}", msg.trim_end());
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&hb_path)
+                {
+                    use std::io::Write;
+                    let _ = f.write_all(msg.as_bytes());
+                }
+            }
+        });
+    }
+
+    loop {
+        let listener = match tokio::net::TcpListener::bind(("127.0.0.1", PORT)).await {
+            Ok(l) => l,
+            Err(e) => {
+                server_log!("[wdt] bind ERR {} — retry dans 2 s", e);
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                continue;
+            }
+        };
+        server_log!("[server] bind ok {} (cycle serve)", addr);
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<()>();
+        *WATCHDOG_TX.lock().await = Some(tx);
+        server_log!("[server] axum serve lancé");
+        let _ = axum::serve(listener, app.clone())
+            .with_graceful_shutdown(async move {
+                let _ = rx.recv().await;
+            })
+            .await;
+        server_log!("[wdt] serve terminé — rotation");
+        tokio::time::sleep(Duration::from_millis(800)).await;
+    }
+}
+
+/// Canal de rotation : le thread superviseur envoie un signal pour déclencher
+/// l'arrêt gracieux + relance du serveur axum quand /ping ne répond plus.
+static WATCHDOG_TX: std::sync::LazyLock<
+    tokio::sync::Mutex<Option<tokio::sync::mpsc::UnboundedSender<()>>>,
+> = std::sync::LazyLock::new(|| tokio::sync::Mutex::new(None));
+
+/// Date (unix, secondes) de la dernière requête HTTP reçue par le serveur.
+/// Permet au watchdog de ne JAMAIS tourner tant que le serveur reçoit du
+/// trafic (une panne de sonde alors que l'UI parle au serveur = faux positif).
+static LAST_HTTP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Nombre de requêtes HTTP en cours de traitement. Tant que > 0, le serveur
+/// accepte et traite : les échecs de sonde sont des faux positifs et le
+/// watchdog se met en veille (aucune rotation).
+static ACTIVE_REQUESTS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Sonde simple d'un "GET /ping" en std bloquant depuis le thread superviseur.
+fn probe_ping() -> bool {
+    use std::io::{Read, Write};
+    use std::net::Shutdown;
+    let dst: std::net::SocketAddr = "127.0.0.1:8787".parse().unwrap();
+    if let Ok(mut s) =
+        std::net::TcpStream::connect_timeout(&dst, Duration::from_millis(800))
+    {
+        let _ = s.set_read_timeout(Some(Duration::from_secs(4)));
+        let _ = s.write_all(b"GET /ping HTTP/1.0\r\nHost: watchdog\r\n\r\n");
+        let mut buf = [0u8; 64];
+        match s.read(&mut buf) {
+            Ok(n) if n > 0 => true,
+            _ => {
+                let _ = s.shutdown(Shutdown::Both);
+                false
+            }
+        }
+    } else {
+        false
+    }
+}
+
+/// Espace libre (octets) sur le volume contenant `dir`, si mesurable.
+#[cfg(unix)]
+fn free_space_bytes(dir: &std::path::Path) -> Option<u64> {
+    use std::os::unix::ffi::OsStrExt;
+    let c = std::ffi::CString::new(dir.as_os_str().as_bytes()).ok()?;
+    let mut vfs = std::mem::MaybeUninit::<libc::statvfs>::uninit();
+    let ret = unsafe { libc::statvfs(c.as_ptr(), vfs.as_mut_ptr()) };
+    if ret != 0 {
+        return None;
+    }
+    let vfs = unsafe { vfs.assume_init() };
+    Some(vfs.f_bavail.saturating_mul(vfs.f_frsize))
+}
+#[cfg(not(unix))]
+fn free_space_bytes(_dir: &std::path::Path) -> Option<u64> {
+    None
+}
+
+/// Supprime les fichiers temporaires `.tmp_*` orphelins (crash, processus tué
+/// par Android, redémarrage) qui consomment l'espace d'écriture. Appelé au
+/// démarrage du serveur pour redonner un disque propre.
+fn cleanup_orphan_temp(output_dir: &std::path::Path) {
+    for sub in ["Audio", "Video"] {
+        let dir = output_dir.join(sub);
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        let mut removed = 0u32;
+        for e in entries.flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if name.starts_with(".tmp_") {
+                if std::fs::remove_file(e.path()).is_ok() {
+                    removed += 1;
+                }
+            }
+        }
+        if removed > 0 {
+            server_log!("[cleanup] {} fichier(s) temporaire(s) orphelin(s) supprimé(s) dans {}", removed, dir.display());
+        }
+    }
+}
+
+/// Démarre le serveur sur un runtime Tokio dédié (thread std), indépendant de
+/// `tauri::async_runtime` dont le driver IO peut être défaillant sur Android.
+pub fn run_server_sync(output_dir: PathBuf, resource_dir: Option<PathBuf>) -> ! {
+    cleanup_orphan_temp(&output_dir);
+    crashlog("[stdprobe] start");
+    std::thread::spawn(|| {
+        let listener = match std::net::TcpListener::bind("127.0.0.1:9090") {
+            Ok(l) => l,
+            Err(e) => {
+                crashlog(&format!("[stdprobe] bind 9090 ERR {}", e));
+                return;
+            }
+        };
+        crashlog("[stdprobe] bind 9090 ok, serving blocking...");
+        use std::io::Write;
+        loop {
+            match listener.accept() {
+                Ok((mut sock, _)) => {
+                    crashlog("[stdprobe] accepted conn");
+                    let _ = sock.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nPONG\n");
+                }
+                Err(e) => crashlog(&format!("[stdprobe] accept ERR {}", e)),
+            }
+        }
+    });
+    std::thread::spawn(|| {
+        use std::io::Read;
+        crashlog("[stdprobe] outbound std connect to 9090...");
+        match std::net::TcpStream::connect("127.0.0.1:9090") {
+            Ok(mut s) => {
+                let _ = s.set_read_timeout(Some(Duration::from_secs(3)));
+                let mut buf = [0u8; 64];
+                let n = s.read(&mut buf).unwrap_or(0);
+                let got = String::from_utf8_lossy(&buf[..n.min(buf.len())]).to_string();
+                crashlog(&format!("[stdprobe] outbound std OK => {:?}", got));
+            }
+            Err(e) => crashlog(&format!("[stdprobe] outbound std ERR {}", e)),
+        }
+    });
+
+    // ─── Superviseur / watchdog ───
+    // Sonde /ping sur 8787 toutes les 10 s. Ne compte un échec que s'il survient
+    // dans une fenêtre de 90 s (un device endormi gèle les sockets loopback sans
+    // que le serveur soit mort : une sieste longue ne doit PAS déclencher de
+    // rotation qui n'aurait aucun effet). Sur 3 échecs consécutifs rapprochés:
+    // rotation gracieuse (nouveau bind + nouveau serve) avec cooldown 240 s.
+    // Après 3 rotations, pause longue (5 min) avant de re-tester.
+    // Le process n'est JAMAIS arrêté : une fois le serveur réchauffé, il reparle.
+    std::thread::spawn(|| {
+        let started = Instant::now();
+        let mut fails: u32 = 0;
+        let mut rotations: u32 = 0;
+        let mut last_fail: Option<Instant> = None;
+        let mut last_rotation: Option<Instant> = None;
+
+        loop {
+            std::thread::sleep(Duration::from_secs(10));
+            // Si le serveur reçoit du trafic (< 90 s), il est vivant : les échecs
+            // de sonde sont des faux positifs (chargement, sieste) — on ne compte
+            // rien et on recommence.
+            let now_secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let last_http = LAST_HTTP.load(std::sync::atomic::Ordering::Relaxed);
+            // Requête en cours (stream, download, resolve...) : le serveur est
+            // vivant par construction — aucune sonde, aucun comptage.
+            if ACTIVE_REQUESTS.load(std::sync::atomic::Ordering::Relaxed) > 0 {
+                fails = 0;
+                last_fail = None;
+                continue;
+            }
+            if last_http != 0 && now_secs.saturating_sub(last_http) < 90 {
+                fails = 0;
+                last_fail = None;
+                continue;
+            }
+            if let Some(lf) = last_fail {
+                if lf.elapsed() > Duration::from_secs(90) {
+                    // Sieste du device / longue coupure : on repart de zéro.
+                    fails = 0;
+                    last_fail = None;
+                }
+            }
+            if probe_ping() {
+                fails = 0;
+                last_fail = None;
+                continue;
+            }
+            fails += 1;
+            last_fail = Some(Instant::now());
+            if fails >= 3 {
+                // Période de grâce au démarrage : au boot, Android met ~2 min à provisionner
+// le réseau de l'app (netd) — PENDANT CE TEMPS AUSSI le réseau loopback est
+// en file d'attente : selftest, sondes et connexions WebView échouent tous.
+// On n'agit donc JAMAIS pendant les 180 premières secondes.
+                if started.elapsed() < Duration::from_secs(180) {
+                    crashlog(&format!(
+                        "[wdt] probe échouée #{}/{} — grâce démarrage {}s, on retarde",
+                        fails, fails, started.elapsed().as_secs()
+                    ));
+                    fails = 0;
+                    last_fail = None;
+                    std::thread::sleep(Duration::from_secs(20));
+                    continue;
+                }
+                // Cooldown entre rotations : ne jamais enchaîner sans répit.
+                if let Some(lr) = last_rotation {
+                    if lr.elapsed() < Duration::from_secs(240) {
+                        crashlog(&format!(
+                            "[wdt] probe échouée #{}/{} — cooldown rotation ({}s restantes), on retarde",
+                            fails, fails, 240 - lr.elapsed().as_secs()
+                        ));
+                        fails = 0;
+                        last_fail = None;
+                        std::thread::sleep(Duration::from_secs(30));
+                        continue;
+                    }
+                }
+                if rotations >= 3 {
+                    crashlog("[wdt] 3 rotations déjà tentées — pause longue 5 min avant re-test");
+                    rotations = 0;
+                    fails = 0;
+                    last_fail = None;
+                    std::thread::sleep(Duration::from_secs(300));
+                    continue;
+                }
+                match WATCHDOG_TX.try_lock() {
+                    Ok(mut guard) => {
+                        if let Some(tx) = guard.take() {
+                            let _ = tx.send(());
+                            crashlog(&format!("[wdt] rotation demandée (signal envoyé, total {})", rotations + 1));
+                            rotations += 1;
+                            fails = 0;
+                            last_fail = None;
+                            last_rotation = Some(Instant::now());
+                        } else {
+                            crashlog("[wdt] aucun canal serveur enregistré (bind en cours ?)");
+                            fails = 1;
+                        }
+                    }
+                    Err(_) => {
+                        fails = 1;
+                    }
+                }
+            }
+        }
+    });
+
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(8)
+        .enable_all()
+        .build()
+        .expect("build dedicated tokio runtime");
+    rt.block_on(async move {
+        {
+            crashlog("[tokioprobe] outbound tokio 192.168.137.1:8080 (3s)...");
+            match tokio::time::timeout(
+                Duration::from_secs(3),
+                tokio::net::TcpStream::connect("192.168.137.1:8080"),
+            )
+            .await
+            {
+                Ok(Ok(_s)) => crashlog("[tokioprobe] tokio->192.168.137.1:8080 CONNECT OK"),
+                Ok(Err(e)) => crashlog(&format!("[tokioprobe] tokio->hotspot ERR {}", e)),
+                Err(_) => crashlog("[tokioprobe] tokio->hotspot TIMEOUT"),
+            }
+        }
+        start_server(output_dir, resource_dir).await;
+    });
+    std::process::exit(0);
+}
+
+fn crashlog(msg: &str) {
+    const PATH: &str = "/storage/emulated/0/Download/mediacli_crash.txt";
+    eprintln!("{}", msg.trim_end());
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(PATH) {
+        let _ = f.write_all((msg.to_string() + "\n").as_bytes());
+    }
 }

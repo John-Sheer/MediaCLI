@@ -11,6 +11,10 @@ import androidx.core.content.ContextCompat
 class MainActivity : TauriActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     try {
+      android.webkit.WebView.setWebContentsDebuggingEnabled(true)
+    } catch (_: Exception) {}
+
+    try {
       val prefs = getSharedPreferences("wv_prefs", MODE_PRIVATE)
       var suffix = prefs.getString("wv_suffix", null)
       if (suffix == null) {
@@ -30,12 +34,31 @@ class MainActivity : TauriActivity() {
 
   override fun onWebViewCreate(webView: WebView) {
     super.onWebViewCreate(webView)
+    webView.settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
     webView.settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
     webView.settings.setSupportMultipleWindows(false)
     webView.clearCache(true)
     webView.clearHistory()
     webView.clearFormData()
     BackgroundBridge.webView = webView
+  }
+
+  override fun onBackPressed() {
+    // Le bouton retour déclenche la même demande de confirmation que la croix
+    // de la barre du haut : on transmet un événement au frontend qui affiche la
+    // modale "Quitter MediaCLI ?". L'app n'est réellement fermée que si
+    // l'utilisateur confirme (commande quit_app côté Rust).
+    val view = BackgroundBridge.webView
+    if (view != null) {
+      view.post {
+        view.evaluateJavascript(
+          "window.dispatchEvent(new CustomEvent('quit-requested', { detail: 'back' }));",
+          null
+        )
+      }
+    } else {
+      moveTaskToBack(true)
+    }
   }
 
   override fun onStop() {

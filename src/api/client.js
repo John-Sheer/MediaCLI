@@ -44,6 +44,14 @@ export const api = {
     return postJson("/download", { videoId, title, format });
   },
 
+  async pauseDownload(id) {
+    return postJson("/download-pause", { id });
+  },
+
+  async resumeDownload(id) {
+    return postJson("/download-resume", { id });
+  },
+
   async proxy(action) {
     return postJson("/proxy", { action });
   },
@@ -60,6 +68,11 @@ export const api = {
   async listFolder(path, kind) {
     const { ok, data } = await getJson("/list-folder", { path, kind });
     return ok ? data : { error: "Impossible de lister le dossier." };
+  },
+
+  async searchLocal(query) {
+    const { ok, data } = await getJson("/local-search", { q: query });
+    return ok ? data : { error: data.error || "Erreur inconnue du serveur" };
   },
 
   async scanFolders(onFolder, onDone, onError) {
@@ -116,8 +129,19 @@ export function downloadErrorInfo(msg) {
   if (/no space left|disk full|quota exceeded|ENOSPC/i.test(s)) {
     return { code: "STOCK", message: "espace insuffisant" };
   }
-  if (/écriture|write error|cannot write/i.test(s)) {
-    return { code: "ECR", message: "erreur d'écriture" };
+  if (/écriture|write error|cannot write|input\/output|i\/o error|os error/i.test(s)) {
+    const os = s.match(/os error[^\s\)]*\s*\(\s*os error\s+(\d+)\)|os error\s+(\d+)/i);
+    const osNum = os ? (os[1] || os[2]) : "";
+    const causes = {
+      "5": "stockage en veille ou démonté (EIO) — réessayez dans une minute",
+      "28": "stockage plein — libérez de l'espace",
+      "13": "accès aux fichiers refusé — réautorisez « Tous les fichiers »",
+      "30": "système de fichiers en lecture seule",
+      "2": "dossier introuvable ou inaccessible",
+      "22": "argument/path invalide (nom de fichier trop long ?)",
+    };
+    const cause = osNum ? (causes[osNum] || `erreur système ${osNum}`) : "erreur d'écriture";
+    return { code: "ECR", message: cause, raw: s };
   }
   if (/conversion|encode|decoder|codec|invalid data|mp3/i.test(s)) {
     return { code: "CONV", message: "erreur de conversion" };

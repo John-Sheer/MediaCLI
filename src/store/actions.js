@@ -101,6 +101,19 @@ export function useActions() {
     }
   };
 
+  const togglePause = async (song, format) => {
+    const key = `${song.id}-${format}`;
+    const paused = !!state.downloadPaused?.[key];
+    dispatch({ type: "DOWNLOAD_PAUSED", key, paused: !paused });
+    try {
+      if (paused) await api.resumeDownload(key);
+      else await api.pauseDownload(key);
+    } catch (err) {
+      console.error("Erreur pause/reprise :", err);
+      dispatch({ type: "DOWNLOAD_PAUSED", key, paused });
+    }
+  };
+
   const setTor = async (on) => {
     if (on && !state.torActive) {
       try {
@@ -313,6 +326,7 @@ export function useActions() {
     playEnded,
     stop,
     download,
+    togglePause,
     setTor,
     scanFolders,
     openFolder,
