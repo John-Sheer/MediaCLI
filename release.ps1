@@ -106,6 +106,18 @@ if (-not (Test-Path $sigFile)) { throw "Signature introuvable: $sigFile" }
 # ---------------------------------------------------------------- android apk
 if (-not $SkipBuild) {
   Write-Output "[3/9] Build APK Android (gradle clean + assemble) + signature apksigner..."
+  # SYNC OBLIGATOIRE : la WebView Android sert `src/main/assets/` (pas le .so).
+  # Sans cette copie, gradle repacket l'ANCIEN front et les modifs n'arrivent jamais.
+  $androidAssetsSrc = "dist"
+  $androidAssetsDst = "src-tauri\gen\android\app\src\main\assets"
+  $htmlSrc = Join-Path $root "$androidAssetsSrc\index.html"
+  $htmlDst = Join-Path $root "$androidAssetsDst\index.html"
+  if (-not (Test-Path $htmlSrc)) { throw "index.html introuvable: $htmlSrc" }
+  Copy-Item -Force $htmlSrc $htmlDst
+  $androidBundleDst = Join-Path $root "$androidAssetsDst\assets"
+  if (Test-Path $androidBundleDst) { Remove-Item -Recurse -Force $androidBundleDst }
+  Copy-Item -Recurse -Force (Join-Path $root "$androidAssetsSrc\assets") $androidBundleDst
+  Write-Output "  assets Android synchronise depuis dist : $androidAssetsDst"
   Push-Location "src-tauri\gen\android"
   # clean OBLIGATOIRE : sinon gradle garde l'ancien frontend dist en UP-TO-DATE
   & ".\gradlew.bat" clean
@@ -138,14 +150,18 @@ if (-not $SkipBuild) {
   $entry = $zip.Entries | Where-Object { $_.FullName -eq "lib/arm64-v8a/libmedia_cli_lib.so" }
   $soOut = Join-Path $tmp "lib.so"
   [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $soOut, $true)
-  $zip.Dispose()
-  $soTxt = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($soOut))
   $bundle = Get-ChildItem "dist\assets" -Filter "index-*.js" | Where-Object { $_.Name -match '^index-[A-Za-z0-9_-]+\.js$' } | Select-Object -First 1
   $needle = $bundle.Name
+  $assetEntry = $zip.Entries | Where-Object { $_.FullName -eq "assets/assets/$needle" }
+  $zip.Dispose()
+  $soTxt = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($soOut))
   if (-not ($soTxt.Contains($needle) -or $soTxt.Contains([System.IO.Path]::GetFileNameWithoutExtension($needle)))) {
-    throw "FATAL: l'APK n'embarque pas $needle - frontend obsoleted, abandon."
+    throw "FATAL: le .so n'embarque pas $needle - frontend obsoleted, abandon."
   }
-  Write-Output "  VERIF OK: APK embarque $needle"
+  if (-not $assetEntry) {
+    throw "FATAL: l'APK n'embarque PAS $needle dans assets/assets/ (c'est CE dossier que la WebView sert) - la MAJ ne serait PAS visible sur Android. Abandon."
+  }
+  Write-Output "  VERIF OK: .so + assets/assets/$needle a jour dans l'APK"
 } else {
   Write-Output "[3/9] APK non reconstruit (-SkipBuild)."
 }
