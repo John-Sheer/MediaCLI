@@ -1,6 +1,6 @@
 [package]
 name = "media-cli"
-version = "0.1.19"
+version = "0.1.20"
 description = "MÃƒÆ’Ã‚Â©diaCLI ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Application de musique via YouTube"
 edition = "2021"
 

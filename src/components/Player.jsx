@@ -165,6 +165,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
   const pillRef = useRef(null);
   const pillSwipe = useRef(null);
   const pillSuppressClick = useRef(false);
+  const autoCollapseTimerRef = useRef(null);
   const EQ_PRESETS = {
     "Flat":      { bass: 0,   mid: 0,   treble: 0 },
     "Rock":      { bass: 5,   mid: -1,  treble: 4 },
@@ -340,6 +341,44 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       setDuration(0);
     }
   }, [streamUrl]);
+
+  // Comportement lecture : une VIDEO ouvre le lecteur normal puis se réduit en
+  // pillule (pour montrer qu'on écoute une video) ; un AUDIO reste en pillule
+  // seule, sans jamais ouvrir le lecteur complet.
+  const AUDIO_ONLY_RE = /\.(mp3|m4a|flac|ogg|oga|opus|wav|aac)$/i;
+  const VIDEO_RE = /\.(mp4|mkv|mov|webm)$/i;
+  const autoOpenRef = useRef(false);
+  const collapseTimerRef = useRef(null);
+
+  useEffect(() => {
+    setHasVideo(false);
+    canFsRef.current = false;
+    clearTimeout(collapseTimerRef.current);
+    autoOpenRef.current = false;
+    if (!currentSong || !streamUrl) return;
+
+    const isLocal = streamUrl.includes("/local?path=");
+    const title = currentSong.title || "";
+    const path = currentSong.path || "";
+    const urlPath = isLocal ? decodeURIComponent((streamUrl.split("path=")[1] || "").split("&")[0]) : "";
+    const isAudioFile = AUDIO_ONLY_RE.test(title) || AUDIO_ONLY_RE.test(path) || AUDIO_ONLY_RE.test(urlPath);
+    const isVideoFile = VIDEO_RE.test(title) || VIDEO_RE.test(path) || VIDEO_RE.test(urlPath);
+
+    if (isAudioFile || (isLocal && !isVideoFile)) {
+      // audio local : pillule seule, jamais le lecteur complet.
+      setHidden(true);
+      return;
+    }
+
+    autoOpenRef.current = true;
+    setHidden(false);
+    showControlsTempRef.current?.();
+    collapseTimerRef.current = setTimeout(() => {
+      if (!autoOpenRef.current) return;
+      setHidden(true);
+    }, 3200);
+    return () => clearTimeout(collapseTimerRef.current);
+  }, [currentSong?.id, streamUrl]);
 
   useEffect(() => {
     return () => {
@@ -774,6 +813,8 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     if (sw.moved && Math.abs(dy) > THRESHOLD && Math.abs(dy) > Math.abs(dx)) {
       pillSuppressClick.current = true;
       if (dy < 0) {
+        autoOpenRef.current = false;
+        clearTimeout(collapseTimerRef.current);
         setPillReveal(-46);
         setTimeout(() => {
           setHidden(false);
@@ -1009,6 +1050,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
         ref={pillRef}
         onClick={(e) => {
           if (pillSuppressClick.current) return;
+          autoOpenRef.current = false;
           setHidden(false);
         }}
         title="Afficher le lecteur"
@@ -1080,7 +1122,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
               invoke("update_position", { position_ms: Math.round(t * 1000), duration_ms: Math.round(dd * 1000) }).catch(() => {});
             }
           }}
-          onLoadedMetadata={(e) => { clearLoadTimer(); setDuration(e.target.duration); setBuffering(false); setStreamError(null); setHasVideo(e.target.videoWidth > 0); if (videoRef.current) { videoRef.current.volume = volume; videoRef.current.playbackRate = pitch; } const rp = resumePosRef.current > 0 ? resumePosRef.current : resumeTime; if (rp > 1 && videoRef.current) { try { videoRef.current.currentTime = rp; } catch {} } resumePosRef.current = 0; const dur2 = Number.isFinite(e.target.duration) ? e.target.duration : 0; if (IS_ANDROID && dur2 > 0) { invoke("update_position", { position_ms: Math.round((e.target.currentTime || 0) * 1000), duration_ms: Math.round(dur2 * 1000) }).catch(() => {}); } if (videoRef.current) { setVideoMuted(true); videoRef.current.play().then(() => { setVideoMuted(false); setPlaying(true); }).catch(() => setBuffering(false)); } }}
+          onLoadedMetadata={(e) => { clearLoadTimer(); setDuration(e.target.duration); setBuffering(false); setStreamError(null); setHasVideo(e.target.videoWidth > 0); if (streamUrl && !streamUrl.includes("/local?path=") && e.target.videoWidth === 0 && autoOpenRef.current) { autoOpenRef.current = false; clearTimeout(collapseTimerRef.current); setTimeout(() => setHidden(true), 300); } if (videoRef.current) { videoRef.current.volume = volume; videoRef.current.playbackRate = pitch; } const rp = resumePosRef.current > 0 ? resumePosRef.current : resumeTime; if (rp > 1 && videoRef.current) { try { videoRef.current.currentTime = rp; } catch {} } resumePosRef.current = 0; const dur2 = Number.isFinite(e.target.duration) ? e.target.duration : 0; if (IS_ANDROID && dur2 > 0) { invoke("update_position", { position_ms: Math.round((e.target.currentTime || 0) * 1000), duration_ms: Math.round(dur2 * 1000) }).catch(() => {}); } if (videoRef.current) { setVideoMuted(true); videoRef.current.play().then(() => { setVideoMuted(false); setPlaying(true); }).catch(() => setBuffering(false)); } }}
           onWaiting={() => setBuffering(true)}
           onPlaying={() => { clearLoadTimer(); userPauseRef.current = false; setPlaying(true); setBuffering(false); setStreamError(null); }}
           onEnded={() => {
