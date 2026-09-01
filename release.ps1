@@ -115,7 +115,7 @@ if (-not $SkipBuild) {
   Pop-Location
 
   $unsigned = "src-tauri\gen\android\app\build\outputs\apk\universal\release\app-universal-release-unsigned.apk"
-  $outApk = "C:\Users\LENOVO\Desktop\mediaCLI\APK\app-universal-release-signed.apk"
+  $outApk = "C:\Users\LENOVO\Desktop\mediaCLI\APK\MediaCLI.apk"
   # apksigner auto-detecte (le plus recent des build-tools), jamais en dur
   $buildTools = Get-ChildItem (Join-Path $env:LOCALAPPDATA "Android\Sdk\build-tools") -Directory -ErrorAction SilentlyContinue |
     Sort-Object { [int]([regex]::Match($_.Name,'^(\d+)').Groups[1].Value) } -Descending | Select-Object -First 1
@@ -180,7 +180,7 @@ $notes = "MediaCLI $Version - build automatise. Nouvelles URLs (aucun cache CDN)
 if ($LASTEXITCODE -ne 0) { throw "Echec gh release create" }
 
 Write-Output "[7/9] Upload des assets..."
-$apkFile = "C:\Users\LENOVO\Desktop\mediaCLI\APK\app-universal-release-signed.apk"
+$apkFile = "C:\Users\LENOVO\Desktop\mediaCLI\APK\MediaCLI.apk"
 & cmd /c "gh release upload $tag --repo John-Sheer/MediaCLI --clobber `"$setup`" `"$sigFile`" `"$zipPath`" `"$apkFile`" >NUL 2>&1"
 if ($LASTEXITCODE -ne 0) { throw "Echec gh release upload" }
 Write-Output "  Asssets uploades (setup, sig, portable, apk)."

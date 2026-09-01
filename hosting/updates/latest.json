@@ -4,7 +4,7 @@
     "pub_date":  "2026-09-01T22:05:15Z",
     "platforms":  {
                       "android-arm64":  {
-                                            "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.18/app-universal-release-signed.apk",
+                                            "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.18/MediaCLI.apk",
                                             "signature":  ""
                                         },
                       "windows-x86_64":  {
