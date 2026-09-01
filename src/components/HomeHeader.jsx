@@ -40,7 +40,7 @@ export function HomeTabs({ homeTab, onSwitch, playlistCount }) {
           homeTab === "streaming" ? "tab-pill-active" : "border-transparent text-muted hover:text-white"
         }`}
       >
-        Lecture Streaming
+        Lecteur Streaming
       </button>
       <button
         onClick={() => onSwitch("local")}
@@ -48,7 +48,7 @@ export function HomeTabs({ homeTab, onSwitch, playlistCount }) {
           homeTab === "local" ? "tab-pill-active" : "border-transparent text-muted hover:text-white"
         }`}
       >
-        Lecture Local
+        Lecteur Local
       </button>
       <button
         onClick={() => onSwitch("playlists")}

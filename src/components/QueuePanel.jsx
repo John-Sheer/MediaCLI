@@ -95,18 +95,18 @@ export default function QueuePanel({
                 <button
                   key={i}
                   onClick={() => onPlayAt && onPlayAt(i)}
-                  className={`w-full text-left flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-colors ${isCurrent ? "bg-accent-red/[0.10] text-accent-red" : "hover:bg-white/[0.04] text-white/90"}`}
+                  className={`w-full text-left flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-colors ${isCurrent ? "bg-white/[0.18] text-white font-semibold" : "hover:bg-white/[0.04] text-white/90"}`}
                 >
-                  <span className="text-[9px] font-mono w-5 shrink-0 opacity-90">{String(i + 1).padStart(2, "0")}</span>
+                  <span className={`text-[9px] font-mono w-5 shrink-0 ${isCurrent ? "text-white" : "opacity-90"}`}>{String(i + 1).padStart(2, "0")}</span>
                   <span className="flex-1 min-w-0 truncate text-[11px]">{item.name || item.title}</span>
-                  {isCurrent && <span className="w-1.5 h-1.5 rounded-full bg-accent-red shrink-0" />}
+                  {isCurrent && <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />}
                 </button>
               );
             })}
             {playlist.length > 0 && (
               <button
                 onClick={() => { const n = window.prompt("Nom de la playlist :", "File d'attente"); if (n !== null) onSaveQueue && onSaveQueue(n || "File d'attente", playlist); }}
-                className="w-full mt-1 text-[10px] py-1.5 rounded-lg bg-accent-red/10 hover:bg-accent-red/20 text-accent-red transition-colors"
+                className="w-full mt-1 text-[10px] py-1.5 rounded-lg bg-white/[0.07] hover:bg-white/[0.12] text-white/90 ring-1 ring-white/[0.1] transition-colors"
               >
                 Sauvegarder la file
               </button>

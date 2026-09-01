@@ -315,6 +315,29 @@ export function useActions() {
 
   const resetFolder = () => dispatch({ type: "LOCAL_RESET_FOLDER" });
 
+  const playAllFolders = async () => {
+    const dirs = state.localDirs || [];
+    const all = [];
+    for (const d of dirs) {
+      try {
+        const [a, v] = await Promise.all([api.listFolder(d.path, "audio"), api.listFolder(d.path, "video")]);
+        if (a.error || v.error) continue;
+        all.push(...mergeFolderFiles([a.files, v.files]));
+      } catch { /* ignore unreadable folder */ }
+    }
+    if (all.length === 0) {
+      dispatch({ type: "LOCAL_FOLDER_ERROR", error: "Aucun fichier audio ou vidéo trouvé." });
+      return;
+    }
+    const first = all[0];
+    dispatch({
+      type: "PLAY_LOCAL",
+      song: { id: first.path, title: first.name, channel: "Local", thumbnail: null, duration: 0 },
+      path: first.path,
+      playlist: all,
+    });
+  };
+
   const createPlaylist = (name) => dispatch({ type: "CREATE_PLAYLIST", name });
   const renamePlaylist = (id, name) => dispatch({ type: "RENAME_PLAYLIST", id, name });
   const deletePlaylist = (id) => dispatch({ type: "DELETE_PLAYLIST", id });
@@ -337,6 +360,7 @@ export function useActions() {
     scanFolders,
     openFolder,
     playFolder,
+    playAllFolders,
     pickFolder,
     resetFolder,
     createPlaylist,

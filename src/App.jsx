@@ -8,11 +8,12 @@ import PlaylistsView from "./components/PlaylistsView.jsx";
 import { AboutModal } from "./components/AboutModal.jsx";
 import { VpnModal } from "./components/VpnModal.jsx";
 import UpdateManager from "./components/UpdateManager.jsx";
+import { Onboarding } from "./components/Onboarding.jsx";
 import Player from "./components/Player.jsx";
 import QueuePanel from "./components/QueuePanel.jsx";
 import Settings from "./components/Settings.jsx";
 import { Logo } from "./components/Logo.jsx";
-import { useStore } from "./store/store.jsx";
+import { useStore, isLocalTrack } from "./store/store.jsx";
 import { useActions } from "./store/actions.js";
 import { api } from "./api/client.js";
 import { onThumbbarAction } from "./lib/thumbbar.js";
@@ -30,6 +31,21 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   const [permDenied, setPermDenied] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [playerReveal, setPlayerReveal] = useState(0);
+
+  // Première installation : au démarrage, montrer les fonctionnalités et leur
+  // usage. On ne repasse la modale qu'après une nouvelle installation (flag).
+  useEffect(() => {
+    let onboarded = false;
+    try { onboarded = localStorage.getItem("mediacli-onboarded") === "1"; } catch {}
+    if (!onboarded) setShowOnboarding(true);
+  }, []);
+
+  const closeOnboarding = () => {
+    setShowOnboarding(false);
+    try { localStorage.setItem("mediacli-onboarded", "1"); } catch {}
+  };
 
   // Au premier lancement sur Android, « Tous les fichiers » est indispensable
   // pour écrire dans /storage/emulated/0/MediaCLI. Si l'accès n'est pas encore
@@ -239,11 +255,10 @@ export default function App() {
   const handlePlayPlaylist = (id, trackId) => {
     const pl = state.playlists[id];
     if (!pl || pl.tracks.length === 0) return;
-    const start = trackId ? pl.tracks.findIndex((t) => t.id === trackId) : 0;
+    const start = trackId ? pl.tracks.findIndex((t) => (t.path || t.id) === trackId) : 0;
     const first = pl.tracks[start >= 0 ? start : 0];
-    const isLocalTrack = first.channel === "Local";
-    if (isLocalTrack) {
-      actions.playLocal(first, first.id, pl.tracks);
+    if (isLocalTrack(first)) {
+      actions.playLocal(first, first.path || first.id, pl.tracks);
     } else {
       actions.play(first, pl.tracks);
     }
@@ -310,6 +325,7 @@ export default function App() {
                 onCreateAndAdd={handleCreateAndAdd}
                 onOpenDownloads={handleOpenDownloads}
                 onAuthorize={handleAuthorizeAccess}
+                onOpenPlayer={() => setPlayerReveal((n) => n + 1)}
               />
             )}
 
@@ -325,11 +341,14 @@ export default function App() {
                 onRename={(id, name) => dispatch({ type: "RENAME_PLAYLIST", id, name })}
                 onCreate={(name) => dispatch({ type: "CREATE_PLAYLIST", name })}
                 localDirs={state.localDirs}
+                currentSong={state.currentSong}
+                isLocal={state.isLocal}
                 onAddToPlaylist={handleAddToPlaylist}
+                onRemoveFromPlaylist={handleRemoveFromPlaylist}
               />
             )}
 
-            <Footer onAbout={() => dispatch({ type: "TOGGLE_ABOUT", open: true })} onSettings={() => setShowSettings(true)} />
+            <Footer onSettings={() => setShowSettings(true)} />
           </div>
         </div>
       </div>
@@ -356,6 +375,7 @@ export default function App() {
         showQueue={showQueue}
         onToggleQueue={() => setShowQueue(v => !v)}
         onDownload={actions.download}
+        revealSignal={playerReveal}
       />
 
       <QueuePanel
@@ -389,7 +409,7 @@ export default function App() {
             </p>
             <button
               onClick={handlePermAuthorize}
-              className="mt-5 w-full py-2.5 rounded-xl bg-accent-red text-white text-sm font-medium hover:bg-accent-red/90 transition-colors"
+              className="mt-5 w-full py-2.5 rounded-xl bg-white/[0.09] text-white text-sm font-medium ring-1 ring-white/[0.16] hover:bg-white/[0.15] transition-colors"
             >
               Autoriser l'accès
             </button>
@@ -403,8 +423,7 @@ export default function App() {
         </div>
       )}
       {showQuitConfirm && (
-        <div className="fixed inset-0 z-[10060] flex items-center justify-center bg-black/80 animate-fade-in">
-          <div className="w-[min(20rem,calc(100vw-48px))] rounded-2xl bg-surface border border-white/10 p-5 shadow-2xl">
+        <div className="fixed inset-0 z-[10060] flex items-center justify-center bg-black/80 animate-fade-in">          <div className="w-[min(20rem,calc(100vw-48px))] rounded-2xl bg-surface border border-white/10 p-5 shadow-2xl">
             <div className="flex justify-end -mt-1 -mr-1">
               <button onClick={closeQuitConfirm} className="p-1.5 rounded-lg hover:bg-white/[0.08] text-white/60 hover:text-white transition-colors">
                 <X className="w-4 h-4" />
@@ -431,6 +450,7 @@ export default function App() {
           </div>
         </div>
       )}
+      {showOnboarding && <Onboarding onClose={closeOnboarding} />}
     </div>
   );
 }

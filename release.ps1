@@ -34,6 +34,23 @@ function Set-FileVersion {
   Write-Output "  version -> $Path"
 }
 
+# Bump la version du package media-cli dans Cargo.lock (l'entree "name = \"media-cli\"")
+# sans dependre de la valeur precedente (le lock peut etre reste sur une version plus ancienne).
+function Set-LockVersion {
+  param([string]$Path, [string]$NewVersion)
+  $lines = [System.Collections.Generic.List[string]]([System.IO.File]::ReadAllLines($Path))
+  for ($i = 0; $i -lt $lines.Count - 1; $i++) {
+    if ($lines[$i] -match '^\s*name = "media-cli"$') {
+      if ($lines[$i+1] -notmatch '^\s*version = ') { throw "Entree media-cli sans version dans $Path (ligne $($i+1))" }
+      $lines[$i+1] = "version = `"$NewVersion`""
+      [System.IO.File]::WriteAllLines($Path, $lines, [System.Text.UTF8Encoding]::new($false))
+      Write-Output "  version (lock) -> $Path"
+      return
+    }
+  }
+  throw "Package media-cli introuvable dans $Path"
+}
+
 function Get-ReleaseUrl {
   param([string]$tag, [string]$name)
   $rel = gh api "repos/John-Sheer/MediaCLI/releases/tags/$tag" 2>$null | ConvertFrom-Json
@@ -62,7 +79,7 @@ Write-Output "[1/9] Bump version dans package.json, tauri.conf.json, Cargo.toml,
 Set-FileVersion "package.json" "`"version`": `"$cur`"" "`"version`": `"$Version`""
 Set-FileVersion "src-tauri\tauri.conf.json" "`"version`": `"$cur`"" "`"version`": `"$Version`""
 Set-FileVersion "src-tauri\Cargo.toml" "version = `"$cur`"" "version = `"$Version`""
-Set-FileVersion "src-tauri\Cargo.lock" "version = `"$cur`"" "version = `"$Version`""
+Set-LockVersion "src-tauri\Cargo.lock" $Version
 $props = "src-tauri\gen\android\app\tauri.properties"
 $ptxt = Get-Content -Raw $props
 $oldCode = [int]([regex]::Match($ptxt, 'versionCode=(\d+)').Groups[1].Value)
@@ -88,15 +105,24 @@ if (-not (Test-Path $sigFile)) { throw "Signature introuvable: $sigFile" }
 
 # ---------------------------------------------------------------- android apk
 if (-not $SkipBuild) {
-  Write-Output "[3/9] Build APK Android (gradle) + signature apksigner..."
+  Write-Output "[3/9] Build APK Android (gradle clean + assemble) + signature apksigner..."
   Push-Location "src-tauri\gen\android"
+  # clean OBLIGATOIRE : sinon gradle garde l'ancien frontend dist en UP-TO-DATE
+  & ".\gradlew.bat" clean
+  if ($LASTEXITCODE -ne 0) { Pop-Location; throw "Echec gradle clean" }
   & ".\gradlew.bat" assembleUniversalRelease --offline
   if ($LASTEXITCODE -ne 0) { Pop-Location; throw "Echec gradle assembleUniversalRelease" }
   Pop-Location
 
   $unsigned = "src-tauri\gen\android\app\build\outputs\apk\universal\release\app-universal-release-unsigned.apk"
   $outApk = "C:\Users\LENOVO\Desktop\mediaCLI\APK\app-universal-release-signed.apk"
-  $apksigner = "C:\Users\LENOVO\AppData\Local\Android\Sdk\build-tools\35.0.0\apksigner.bat"
+  # apksigner auto-detecte (le plus recent des build-tools), jamais en dur
+  $buildTools = Get-ChildItem (Join-Path $env:LOCALAPPDATA "Android\Sdk\build-tools") -Directory -ErrorAction SilentlyContinue |
+    Sort-Object { [int]([regex]::Match($_.Name,'^(\d+)').Groups[1].Value) } -Descending | Select-Object -First 1
+  if (-not $buildTools) { throw "build-tools Android introuvable sous $env:LOCALAPPDATA\Android\Sdk\build-tools" }
+  $apksigner = Join-Path $buildTools.FullName "apksigner.bat"
+  if (-not (Test-Path $apksigner)) { throw "apksigner introuvable: $apksigner" }
+  Write-Output "  apksigner: $apksigner"
   $pass = "3MFQhAiqBukg9LmXb8GxtlaS"
   $argLine = "sign --ks `"C:\Users\LENOVO\Desktop\mediaCLI\APK\keystore\mediacli-release.keystore`" --ks-key-alias mediacli --ks-pass pass:$pass --out `"$outApk`" `"$unsigned`""
   & cmd /c "`"$apksigner`" $argLine"

@@ -1,6 +1,16 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { FolderOpen, Music, Video, Play, GripVertical, RefreshCw, Loader2, Search, MoreVertical, ListPlus, Plus, FolderSearch } from "lucide-react";
+import { FolderOpen, Music, Video, Play, GripVertical, Loader2, Search, MoreVertical, ListPlus, Plus, FolderSearch } from "lucide-react";
 import { api } from "../api/client";
+
+function PlayingIcon({ className = "w-3.5 h-3.5" }) {
+  return (
+    <span className={`${className} flex items-end gap-[2px]`} aria-label="En lecture">
+      <span className="w-[2px] rounded-sm bg-accent-red playing-bar" style={{ animationDelay: "0ms" }} />
+      <span className="w-[2px] rounded-sm bg-accent-red playing-bar" style={{ animationDelay: "-330ms" }} />
+      <span className="w-[2px] rounded-sm bg-accent-red playing-bar" style={{ animationDelay: "-660ms" }} />
+    </span>
+  );
+}
 
 
 function SkeletonRows() {
@@ -73,26 +83,26 @@ function FolderBadge({ audio, video, glow }) {
   );
 }
 
-function FolderTile({ folder, onClick, active, playing }) {
+function FolderTile({ folder, onClick, active, playing, onPlayFolder }) {
   const glow = active || playing;
   return (
     <div
       onClick={onClick}
-      className={`group relative flex items-start gap-2.5 rounded-xl transition-all duration-200 cursor-pointer px-3 py-2 border ${
+      className={`group relative flex items-center gap-2 rounded-xl transition-all duration-200 cursor-pointer px-3 py-2 border ${
         active || playing
-          ? "bg-blue-500/[0.05] border-blue-500/30"
+          ? "bg-white/[0.06] border-white/20 ring-1 ring-white/10"
           : "bg-white/[0.02] border-white/[0.06] hover:bg-white/[0.05] hover:border-white/[0.15] active:scale-[0.97]"
       }`}
     >
-      <div className={`w-7 h-7 rounded-lg bg-gradient-to-b from-white/15 to-white/5 ring-1 ring-white/15 flex items-center justify-center shrink-0 mt-0.5 ${glow ? "drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]" : ""}`}>
+      <div className={`w-7 h-7 rounded-lg bg-gradient-to-b from-white/15 to-white/5 ring-1 ring-white/15 flex items-center justify-center shrink-0 ${glow ? "drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]" : ""}`}>
         <FolderOpen className={`w-3.5 h-3.5 text-white/90 ${glow ? "drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]" : ""}`} />
       </div>
       <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2">
           <p className={`text-[11px] font-semibold truncate leading-tight group-hover:text-white ${active ? "text-white" : "text-white/85"}`}>
             {folder.name}
           </p>
-          <div className="shrink-0 mt-0.5">
+          <div className="shrink-0">
             <FolderBadge audio={folder.hasAudio} video={folder.hasVideo} glow={glow} />
           </div>
         </div>
@@ -100,6 +110,17 @@ function FolderTile({ folder, onClick, active, playing }) {
           {folder.path}
         </p>
       </div>
+      {playing ? (
+        <PlayingIcon className="w-3 h-3 shrink-0" />
+      ) : (
+        <button
+          onClick={(e) => { e.stopPropagation(); onPlayFolder && onPlayFolder(folder.path); }}
+          title={`Lire « ${folder.name} »`}
+          className="w-6 h-6 rounded-full bg-white/[0.08] text-white ring-1 ring-white/15 hover:bg-accent-red hover:ring-accent-red/40 transition-all duration-200 active:scale-90 flex items-center justify-center shrink-0"
+        >
+          <Play className="w-2.5 h-2.5 ml-px" fill="currentColor" />
+        </button>
+      )}
     </div>
   );
 }
@@ -137,7 +158,7 @@ function SongNameRow({ file, folderLabel, sizeLabel, index, playing, onPlay, dra
       onClick={onPlay}
       className={`group flex items-center gap-2 rounded-lg px-2.5 py-1.5 cursor-pointer transition-all duration-150 border ${
         playing
-          ? "bg-accent-red/[0.08] border-accent-red/35"
+          ? "bg-white/[0.06] border-white/20"
           : "bg-white/[0.02] border-white/[0.06] hover:border-white/[0.16] hover:bg-white/[0.04]"
       } ${isDragging ? "opacity-40" : "opacity-100"}`}
     >
@@ -149,12 +170,16 @@ function SongNameRow({ file, folderLabel, sizeLabel, index, playing, onPlay, dra
       >
         <GripVertical className="w-3.5 h-3.5" />
       </div>
-      <span className={`text-[10px] font-mono w-5 shrink-0 ${playing ? "text-accent-red" : "text-muted/85"}`}>
-        {String(index + 1).padStart(2, "0")}
+      <span className="w-5 shrink-0 flex items-center justify-center">
+        {isVideo ? (
+          <Video className={`w-4 h-4 ${playing ? "text-white" : "text-white/55"}`} />
+        ) : (
+          <Music className={`w-4 h-4 ${playing ? "text-white" : "text-white/55"}`} />
+        )}
       </span>
       <span
         className={`flex-1 min-w-0 ${
-          playing ? "text-accent-red font-semibold drop-shadow-[0_0_14px_rgba(255,59,92,1)] drop-shadow-[0_0_28px_rgba(255,59,92,1)]" : "text-white/90 group-hover:text-white"
+          playing ? "text-white font-semibold" : "text-white/90 group-hover:text-white"
         }`}
       >
         <span className="block truncate text-[11px]">{file.name}</span>
@@ -163,10 +188,10 @@ function SongNameRow({ file, folderLabel, sizeLabel, index, playing, onPlay, dra
         )}
       </span>
       {sizeLabel && (
-        <span className={`shrink-0 text-[10px] font-mono tabular-nums ${playing ? "text-accent-red/80" : "text-white/70"} pl-1`}>{sizeLabel}</span>
+        <span className={`shrink-0 text-[10px] font-mono tabular-nums ${playing ? "text-white" : "text-white/70"} pl-1`}>{sizeLabel}</span>
       )}
       {playing ? (
-        <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-accent-red" aria-label="En lecture" />
+        <PlayingIcon className="w-3.5 h-3.5 shrink-0" />
       ) : (
         <>
           <button
@@ -203,7 +228,7 @@ function SongNameRow({ file, folderLabel, sizeLabel, index, playing, onPlay, dra
             <div className="ml-3 border-l border-white/[0.08] pl-1 pb-1">
               <button
                 onClick={() => addToPl("__new")}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[10px] text-accent-red hover:bg-white/[0.06] rounded-md transition-colors"
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[10px] text-white/85 hover:bg-white/[0.06] rounded-md transition-colors"
               >
                 <Plus className="w-3 h-3" />
                 Nouvelle playlist…
@@ -251,6 +276,7 @@ export function LocalView({ state, actions, onPlayFile, playlists, onAddToPlayli
   }, [localFiles.length, localFolder]);
 
   const [filterQuery, setFilterQuery] = useState("");
+  const [searchBoxOpen, setSearchBoxOpen] = useState(false);
   const [searchFiles, setSearchFiles] = useState(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState(null);
@@ -418,48 +444,46 @@ export function LocalView({ state, actions, onPlayFile, playlists, onAddToPlayli
     onContextMenu: (e) => e.preventDefault(),
   });
 
-  const searching = !!filterQuery.trim();
-  const filteredDirs = localDirs;
+  const searching = !!filterQuery.trim() || searchBoxOpen;
+  const filteredDirs = searching ? [] : localDirs;
   const filteredFiles = ordered.filter(
     (f) => !filterQuery || f.name.toLowerCase().includes(filterQuery.toLowerCase())
   );
 
   return (
-    <section className="relative flex-1 min-h-0 pt-10">
+    <section className="relative flex-1 min-h-0 pt-2">
       <div className="relative z-10 animate-fade-in-up">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-          <div className="flex items-center gap-3">
-            <div>
-              <h2 className="font-mono text-lg font-semibold text-white/90">Bibliothèque locale</h2>
-              <p className="text-[11px] text-muted font-mono mt-0.5">Dossiers contenant audio &amp; vidéo</p>
-            </div>
-            <button
-              onClick={() => actions.scanFolders()}
-              title="Rafraîchir la bibliothèque"
-              className="p-2 rounded-lg text-white/85 hover:text-white hover:bg-white/[0.07] ring-1 ring-white/[0.06] hover:ring-white/20 transition-all duration-200 active:scale-95"
-            >
-              <RefreshCw className={`w-4 h-4 ${localScanning ? "animate-spin" : ""}`} />
-            </button>
-            <button
-              onClick={actions.pickFolder}
-              title="Ouvrir un dossier"
-              className="p-2 rounded-lg text-white/85 hover:text-white hover:bg-white/[0.07] ring-1 ring-white/[0.06] hover:ring-white/20 transition-all duration-200 active:scale-95"
-            >
-              <FolderOpen className="w-4 h-4" />
-            </button>
-          </div>
-
-          <div className="relative flex-1 max-w-xs">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/80" />
-            <input
-              type="text"
-              placeholder="Rechercher dans tous les dossiers…"
-              value={filterQuery}
-              onChange={(e) => setFilterQuery(e.target.value)}
-              className="w-full bg-white/[0.06] border border-white/[0.08] rounded-lg pl-8 pr-3 py-1.5 text-xs text-white/90 text-white/85 outline-none focus:border-white/30 transition-colors"
-            />
-          </div>
+        <div className="relative mb-3">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/40 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Rechercher dans tous les dossiers…"
+            value={filterQuery}
+            onFocus={() => setSearchBoxOpen(true)}
+            onBlur={(e) => { if (!e.target.value.trim()) setSearchBoxOpen(false); }}
+            onChange={(e) => {
+              setFilterQuery(e.target.value);
+              if (!e.target.value.trim()) setSearchBoxOpen(false);
+            }}
+            className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl pl-9 pr-3 py-2 text-xs text-white/90 placeholder-white/30 outline-none focus:border-white/30 focus:ring-1 focus:ring-white/[0.15] transition-all duration-200"
+          />
         </div>
+
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="w-10 h-10 rounded-xl bg-white/[0.06] ring-1 ring-white/[0.15] flex items-center justify-center shrink-0">
+            <FolderOpen className="w-5 h-5 text-white/90" />
+          </div>
+          <button
+            onClick={() => actions.playAllFolders()}
+            title="Lire toutes les pistes de tous les dossiers"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[11px] font-semibold text-white bg-white/[0.08] ring-1 ring-white/[0.14] hover:bg-white/[0.14] hover:ring-white/25 transition-all duration-200 active:scale-95"
+          >
+            <Play className="w-3.5 h-3.5 ml-px" fill="currentColor" />
+            Tout lire
+          </button>
+        </div>
+
+        <div className="mb-3 h-px" style={{ background: "linear-gradient(to right, transparent, rgba(255,255,255,0.12), transparent)" }} />
 
         {localScanning && localDirs.length === 0 ? (
           <SkeletonRows />
@@ -470,11 +494,11 @@ export function LocalView({ state, actions, onPlayFile, playlists, onAddToPlayli
         ) : (
           <>
             {localScanning && (
-              <div className="mb-4 flex items-center gap-2 text-[11px] font-mono text-white/85">
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-accent-red" />
+              <div className="mb-3 flex items-center gap-2 text-[11px] font-mono text-white/85">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-white/80" />
                 Scan en cours… {localDirs.length} dossier{localDirs.length > 1 ? "s" : ""} trouvé{localDirs.length > 1 ? "s" : ""}
                 <div className="flex-1 h-[2px] bg-white/[0.06] rounded-full overflow-hidden ml-2">
-                  <div className="h-full bg-gradient-to-r from-accent-red/60 to-accent-red rounded-full animate-pulse" style={{ width: localDirs.length > 0 ? "60%" : "30%" }} />
+                  <div className="h-full bg-white/50 rounded-full animate-pulse" style={{ width: localDirs.length > 0 ? "60%" : "30%" }} />
                 </div>
               </div>
             )}
@@ -487,22 +511,23 @@ export function LocalView({ state, actions, onPlayFile, playlists, onAddToPlayli
                     active={localFolder === d.path}
                     playing={playingFolder === d.path}
                     onClick={() => openFolder(d.path)}
+                    onPlayFolder={(path) => actions.playFolder(path)}
                   />
                 </div>
               ))}
             </div>
 
-            <div ref={contentScrollRef} className="min-w-0 bg-blue-500/[0.04] rounded-xl p-3">
+            <div ref={contentScrollRef} className="min-w-0 bg-white/[0.02] ring-1 ring-white/[0.06] rounded-xl p-3 shadow-soft">
               {searching ? (
                 <>
                   <div className="flex items-center gap-2 mb-3">
-                    <div className="w-7 h-7 rounded-lg bg-white/[0.06] ring-1 ring-white/15 flex items-center justify-center shrink-0">
-                      <FolderSearch className="w-3.5 h-3.5 text-white/85" />
+                    <div className="w-7 h-7 rounded-lg bg-white/[0.04] ring-1 ring-white/[0.12] flex items-center justify-center shrink-0">
+                      <FolderSearch className="w-3.5 h-3.5 text-white/80" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-[10px] font-mono text-muted/85 truncate">Recherche dans tous les dossiers</p>
                       <p className="text-xs font-semibold text-white/90 truncate">
-                        {searchFiles ? `${searchFiles.length} fichier${searchFiles.length > 1 ? "s" : ""} trouvé${searchFiles.length > 1 ? "s" : ""}` : "Recherche de la bibliothèque…"}
+                        {searchFiles ? `${searchFiles.length} fichier${searchFiles.length > 1 ? "s" : ""} trouvé${searchFiles.length > 1 ? "s" : ""}` : "Chercher une chanson"}
                       </p>
                     </div>
                   </div>
@@ -543,11 +568,14 @@ export function LocalView({ state, actions, onPlayFile, playlists, onAddToPlayli
               ) : !localFolder ? (
                 <div className="flex flex-col items-center justify-center h-full py-16 text-center">
                   <FolderOpen className="w-10 h-10 text-white/80 mb-3" />
-                  <p className="text-xs text-muted/90">Sélectionnez un dossier à gauche</p>
+                  <p className="text-xs text-muted/90">Sélectionnez un dossier pour afficher son contenu</p>
                 </div>
               ) : (
                 <>
                   <div className="flex items-center gap-2 mb-3">
+                    <div className="w-7 h-7 rounded-lg bg-white/[0.04] ring-1 ring-white/[0.12] flex items-center justify-center shrink-0">
+                      <FolderOpen className="w-3.5 h-3.5 text-white/80" />
+                    </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-[10px] font-mono text-muted/85 truncate">Dossier en cours</p>
                       <p className="text-xs font-semibold text-white/90 truncate">{localFolder}</p>

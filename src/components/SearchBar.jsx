@@ -36,7 +36,7 @@ export default function SearchBar({ query, setQuery, onSearch, loading }) {
       className={`group relative flex items-center gap-0 h-[3.25rem] rounded-md transition-all duration-300 my-1 overflow-hidden border ${
         focused
           ? "bg-[#020204] border-white/70 shadow-[0_0_20px_-4px_rgba(255,255,255,0.1)]"
-          : "bg-[#040406] border-white/[0.06] shadow-[0_0_30px_-4px_rgba(255,59,92,0.3),0_2px_16px_-4px_rgba(0,0,0,0.5)]"
+          : "bg-[#040406] border-[#ff3b5c]/40 shadow-[0_0_30px_-4px_rgba(255,59,92,0.3),0_2px_16px_-4px_rgba(0,0,0,0.5)]"
       }`}
     >
       {/* Prompt panel */}
@@ -75,7 +75,7 @@ export default function SearchBar({ query, setQuery, onSearch, loading }) {
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onSearch(); } }}
-          placeholder={!focused && !query ? "$ mediacli search…" : focused && !query ? "artist, album, titre…" : ""}
+          placeholder={!focused && !query ? "Recherchez une chanson, un artiste, un album…" : focused && !query ? "chanson · artiste · album · playlist…" : ""}
           style={{ outline: "none", boxShadow: "none" }}
           className="w-full h-full bg-transparent outline-none appearance-none font-mono text-[13px] text-white/90 text-white/80 tracking-wider caret-transparent px-4"
           spellCheck={false}

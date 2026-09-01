@@ -91,7 +91,7 @@ const ALLOWED_ORIGINS: &[&str] = &[
 
 const AUDIO_EXT: &[&str] = &["mp3", "m4a", "ogg", "wav", "flac", "aac", "webm"];
 const VIDEO_EXT: &[&str] = &["mp4", "mkv", "mov", "webm", "avi", "m4v"];
-const SERVE_EXT: &[&str] = &["mp3", "mp4", "m4a", "webm", "ogg", "wav", "flac", "mkv", "mov", "aac"];
+const SERVE_EXT: &[&str] = &["mp3", "mp4", "m4a", "webm", "ogg", "wav", "flac", "mkv", "mov", "aac", "m4v", "avi"];
 
 const EXCLUDED_DIRS: &[&str] = &[
     "appdata", "application data", "local settings", "microsoft", "windows",
@@ -353,7 +353,11 @@ async fn handle_netprobe() -> Response {
 /// HTTP dans le fichier crash pour voir si les requêtes atteignent axum.
 async fn log_requests(req: Request, next: Next) -> Response {
     let m = req.method().clone();
-    let u = req.uri().path().to_string();
+    let u = {
+        let full = req.uri().to_string();
+        // Tronque la query des requêtes /local et /stream* pour garder le log lisible
+        if full.len() <= 200 { full } else { format!("{}?[{}ch]", req.uri().path(), full.len()) }
+    };
     LAST_HTTP.store(
         std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0),
         std::sync::atomic::Ordering::Relaxed,
@@ -363,7 +367,8 @@ async fn log_requests(req: Request, next: Next) -> Response {
     let t0 = Instant::now();
     let resp = next.run(req).await;
     ACTIVE_REQUESTS.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
-    crashlog(&format!("[req-] {} {} {}ms", m, u, t0.elapsed().as_millis()));
+    let status = resp.status().as_u16();
+    crashlog(&format!("[req-] {} {} -> {} ({}ms)", m, u, status, t0.elapsed().as_millis()));
     resp
 }
 
@@ -432,12 +437,13 @@ fn is_path_allowed(requested: &Path, output_dir: &Path) -> bool {
 fn mime_for_ext(ext: &str) -> &str {
     match ext {
         "mp3" => "audio/mpeg",
-        "mp4" | "m4a" | "mov" => "video/mp4",
+        "mp4" | "m4a" | "m4v" | "mov" => "video/mp4",
         "webm" | "mkv" => "video/webm",
         "ogg" => "audio/ogg",
         "wav" => "audio/wav",
         "flac" => "audio/flac",
         "aac" => "audio/aac",
+        "avi" => "video/x-msvideo",
         _ => "application/octet-stream",
     }
 }
@@ -627,8 +633,25 @@ async fn youtubei_search(
     query: &str,
     limit: usize,
 ) -> Result<Vec<SearchResult>, String> {
-    let data = innertube_request(client, key, "search", serde_json::json!({ "query": query })).await?;
-    Ok(parse_search_response(&data, limit))
+    let mut data = innertube_request(client, key, "search", serde_json::json!({ "query": query })).await?;
+    let mut seen = std::collections::HashSet::new();
+    let mut results = Vec::new();
+    // Une page YouTube ne renvoie souvent qu'une vingtaine de résultats : on
+    // suit le jeton de continuation jusqu'à atteindre le plafond demandé.
+    for _ in 0..5 {
+        let page = parse_search_page(&data, limit - results.len(), &mut seen);
+        results.extend(page.results);
+        if results.len() >= limit {
+            break;
+        }
+        match page.continuation {
+            Some(token) => {
+                data = innertube_request(client, key, "search", serde_json::json!({ "continuation": token })).await?;
+            }
+            None => break,
+        }
+    }
+    Ok(results)
 }
 
 // Recherche via le client ANDROID d'InnerTube : c'est le même chemin qui
@@ -640,15 +663,113 @@ async fn youtubei_search_android(
     query: &str,
     limit: usize,
 ) -> Result<Vec<SearchResult>, String> {
-    let data = innertube_android_request(client, "search", key, serde_json::json!({ "query": query })).await?;
-    Ok(parse_search_response(&data, limit))
+    let mut data = innertube_android_request(client, "search", key, serde_json::json!({ "query": query })).await?;
+    let mut seen = std::collections::HashSet::new();
+    let mut results = Vec::new();
+    for _ in 0..5 {
+        let page = parse_search_page(&data, limit - results.len(), &mut seen);
+        results.extend(page.results);
+        if results.len() >= limit {
+            break;
+        }
+        match page.continuation {
+            Some(token) => {
+                data = innertube_android_request(client, "search", key, serde_json::json!({ "continuation": token })).await?;
+            }
+            None => break,
+        }
+    }
+    Ok(results)
 }
 
-fn parse_search_response(data: &serde_json::Value, limit: usize) -> Vec<SearchResult> {
-    let mut results = Vec::new();
-    let mut seen_ids = std::collections::HashSet::new();
+struct SearchPage {
+    results: Vec<SearchResult>,
+    continuation: Option<String>,
+}
 
-    // Deux structures possibles selon le client InnerTube :
+fn parse_video_renderer(v: &serde_json::Value) -> Option<SearchResult> {
+    let id = v
+        .get("videoId")
+        .and_then(|t| t.as_str())
+        .unwrap_or("")
+        .to_string();
+    if id.is_empty() {
+        return None;
+    }
+    let title = extract_text(v, "/title/runs")
+        .or_else(|| v.pointer("/title/simpleText").and_then(|t| t.as_str()).map(String::from))
+        .unwrap_or_else(|| "Sans titre".into());
+    let dur_text = v
+        .pointer("/lengthText/simpleText")
+        .and_then(|t| t.as_str())
+        .map(String::from)
+        .or_else(|| extract_text(v, "/lengthText/runs"))
+        .unwrap_or_else(|| "0:00".into());
+    let thumbnail = v
+        .pointer("/thumbnail/thumbnails")
+        .and_then(|t| t.as_array())
+        .and_then(|arr| arr.last())
+        .and_then(|t| t.get("url").and_then(|u| u.as_str()))
+        .map(String::from);
+    let channel = extract_text(v, "/ownerText/runs")
+        .or_else(|| extract_text(v, "/longBylineText/runs"))
+        .or_else(|| extract_text(v, "/shortBylineText/runs"))
+        .unwrap_or_else(|| "Inconnu".into());
+    Some(SearchResult {
+        id,
+        title,
+        duration: parse_duration(&dur_text),
+        thumbnail,
+        channel,
+    })
+}
+
+// Dernier élément porteur d'un continuationItemRenderer dans une liste
+// (sections de la page initiale ou continuationItems de la page suivante).
+fn extract_continuation_token(container: &[serde_json::Value]) -> Option<String> {
+    let last = container.iter().rev().find(|el| el.get("continuationItemRenderer").is_some())?;
+    last.pointer("/continuationItemRenderer/continuationEndpoint/continuationCommand/token")
+        .and_then(|t| t.as_str())
+        .map(String::from)
+}
+
+fn parse_search_page(
+    data: &serde_json::Value,
+    cap: usize,
+    seen: &mut std::collections::HashSet<String>,
+) -> SearchPage {
+    let mut results = Vec::new();
+    let mut continuation = None;
+
+    // Réponse de continuation (pages suivantes) :
+    // /onResponseReceivedCommands/appendContinuationItemsAction/continuationItems
+    let cont_items = data
+        .pointer("/onResponseReceivedCommands/appendContinuationItemsAction/continuationItems")
+        .and_then(|v| v.as_array());
+    if let Some(items) = cont_items {
+        continuation = extract_continuation_token(items);
+        for item in items {
+            if results.len() >= cap {
+                break;
+            }
+            // Les clients récents (ANDROID) renvoient compactVideoRenderer /
+            // gridVideoRenderer au lieu de videoRenderer : on accepte les trois.
+            let v = item
+                .get("videoRenderer")
+                .or_else(|| item.get("compactVideoRenderer"))
+                .or_else(|| item.get("gridVideoRenderer"));
+            if let Some(v) = v {
+                if let Some(res) = parse_video_renderer(v) {
+                    if seen.insert(res.id.clone()) {
+                        results.push(res);
+                    }
+                }
+            }
+        }
+        return SearchPage { results, continuation };
+    }
+
+    // Page initiale : deux structures possibles selon le client InnerTube :
     //  - WEB : /contents/twoColumnSearchResultsRenderer/primaryContents/sectionListRenderer/contents
     //  - ANDROID (récent) : /contents/sectionListRenderer/contents
     let sections = data
@@ -661,66 +782,39 @@ fn parse_search_response(data: &serde_json::Value, limit: usize) -> Vec<SearchRe
                 .cloned()
                 .unwrap_or_default()
         });
+    if let Some(tok) = extract_continuation_token(&sections) {
+        continuation = Some(tok);
+    }
     for sec in &sections {
+        if sec.get("continuationItemRenderer").is_some() {
+            continue;
+        }
+        if results.len() >= cap {
+            break;
+        }
         let items = sec
             .pointer("/itemSectionRenderer/contents")
             .and_then(|v| v.as_array())
             .cloned()
             .unwrap_or_default();
         for item in &items {
-            if results.len() >= limit {
+            if results.len() >= cap {
                 break;
             }
-            // Les clients récents (ANDROID) renvoient compactVideoRenderer /
-            // gridVideoRenderer au lieu de videoRenderer : on accepte les trois.
             let v = item
                 .get("videoRenderer")
                 .or_else(|| item.get("compactVideoRenderer"))
                 .or_else(|| item.get("gridVideoRenderer"));
-            let v = match v {
-                Some(v) => v,
-                None => continue,
-            };
-            let id = v
-                .get("videoId")
-                .and_then(|t| t.as_str())
-                .unwrap_or("")
-                .to_string();
-            if id.is_empty() || !seen_ids.insert(id.clone()) {
-                continue;
+            if let Some(v) = v {
+                if let Some(res) = parse_video_renderer(v) {
+                    if seen.insert(res.id.clone()) {
+                        results.push(res);
+                    }
+                }
             }
-            let title = extract_text(v, "/title/runs")
-                .or_else(|| v.pointer("/title/simpleText").and_then(|t| t.as_str()).map(String::from))
-                .unwrap_or_else(|| "Sans titre".into());
-            let dur_text = v
-                .pointer("/lengthText/simpleText")
-                .and_then(|t| t.as_str())
-                .map(String::from)
-                .or_else(|| extract_text(v, "/lengthText/runs"))
-                .unwrap_or_else(|| "0:00".into());
-            let thumbnail = v
-                .pointer("/thumbnail/thumbnails")
-                .and_then(|t| t.as_array())
-                .and_then(|arr| arr.last())
-                .and_then(|t| t.get("url").and_then(|u| u.as_str()))
-                .map(String::from);
-            let channel = extract_text(v, "/ownerText/runs")
-                .or_else(|| extract_text(v, "/longBylineText/runs"))
-                .or_else(|| extract_text(v, "/shortBylineText/runs"))
-                .unwrap_or_else(|| "Inconnu".into());
-            results.push(SearchResult {
-                id,
-                title,
-                duration: parse_duration(&dur_text),
-                thumbnail,
-                channel,
-            });
-        }
-        if results.len() >= limit {
-            break;
         }
     }
-    results
+    SearchPage { results, continuation }
 }
 
 fn extract_text(v: &serde_json::Value, path: &str) -> Option<String> {
@@ -2088,13 +2182,13 @@ async fn handle_search(
         _ => return json_response(serde_json::json!({"error": "Paramètre 'q' manquant."}), StatusCode::BAD_REQUEST, None),
     };
     let origin = headers.get("origin").and_then(|v| v.to_str().ok());
-    const SEARCH_BUDGET: Duration = Duration::from_secs(22);
+    const SEARCH_BUDGET: Duration = Duration::from_secs(60);
     match tokio::time::timeout(SEARCH_BUDGET, run_search(state, q.clone(), origin)).await {
         Ok(resp) => resp,
         Err(_) => {
             server_log!("[search] TIMEOUT après {}s ({})", SEARCH_BUDGET.as_secs(), q);
             json_response(
-                serde_json::json!({"error": "Recherche expirée (délai de 22 s). Réessayez."}),
+                serde_json::json!({"error": "Recherche expirée (délai de 45 s). Réessayez."}),
                 StatusCode::GATEWAY_TIMEOUT,
                 origin,
             )
@@ -2113,23 +2207,56 @@ async fn run_search(state: ServerState, q: String, origin: Option<&str>) -> Resp
         }
     }
     let client = state.client.clone();
-    let results = if let Some(ref key) = state.innertube_key {
-        match youtubei_search(&client, key, &q, 15).await {
-            Ok(r) if !r.is_empty() => Ok(r),
-            Ok(_) | Err(_) => {
-                // Le client WEB est souvent bloqué : on retente via le client
-                // ANDROID (le même que le streaming), qui est plus fiable.
-                match youtubei_search_android(&client, key, &q, 15).await {
-                    Ok(r) if !r.is_empty() => Ok(r),
-                    Ok(_) => Err("No results".into()),
-                    Err(e) => Err(e),
+    // Élargit le champ de recherche : on interroge les DEUX clients InnerTube
+    // (WEB et ANDROID) en parallèle puis on fusionne leurs résultats en retirant
+    // les doublons. Chaque client a son propre classement, ce qui permet
+    // d'obtenir bien plus de résultats qu'avec un seul chemin.
+    let merged = if let Some(ref key) = state.innertube_key {
+        const SEARCH_CAP: usize = 60;
+        let (web, android) = tokio::join!(
+            youtubei_search(&client, key, &q, SEARCH_CAP),
+            youtubei_search_android(&client, key, &q, SEARCH_CAP)
+        );
+        match (web, android) {
+            (Ok(w), Ok(a)) => {
+                let mut seen = std::collections::HashSet::new();
+                let mut out: Vec<SearchResult> = Vec::new();
+                for r in w {
+                    if seen.insert(r.id.clone()) {
+                        out.push(r);
+                    }
+                }
+                for r in a {
+                    if seen.insert(r.id.clone()) {
+                        out.push(r);
+                    }
+                }
+                if out.is_empty() {
+                    Err("No results".into())
+                } else {
+                    Ok(out)
                 }
             }
+            (Ok(w), Err(_)) => {
+                if w.is_empty() {
+                    Err("No results".into())
+                } else {
+                    Ok(w)
+                }
+            }
+            (Err(_), Ok(a)) => {
+                if a.is_empty() {
+                    Err("No results".into())
+                } else {
+                    Ok(a)
+                }
+            }
+            (Err(e1), Err(e2)) => Err(format!("{}; {}", e1, e2)),
         }
     } else {
         Err("YOUTUBE_INNERTUBE_KEY not configured".into())
     };
-    match results {
+    match merged {
         Ok(r) => {
             let val = serde_json::to_value(&r).unwrap();
             state.search_cache.write().await.insert(cache_key, (Instant::now(), val.clone()));
@@ -2333,6 +2460,9 @@ async fn handle_local(
     };
     let mime = mime_for_ext(&ext);
     let file_size = metadata.len();
+    if file_size == 0 {
+        return json_response(serde_json::json!({"error": "Fichier vide."}), StatusCode::BAD_REQUEST, origin);
+    }
 
     if let Some(range_header) = headers.get("range").and_then(|v| v.to_str().ok()) {
         let range_re = Regex::new(r"bytes=(\d+)-(\d*)").unwrap();
@@ -3090,6 +3220,10 @@ async fn handle_list_folder(
                     continue;
                 } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                     if wanted.contains(&ext.to_lowercase().as_str()) {
+                        let sz = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+                        if sz == 0 {
+                            continue;
+                        }
                         let name = entry.file_name().to_string_lossy().to_string();
                         let size_label = fs::metadata(&path)
                             .map(|m| format_size(m.len()))
@@ -3338,8 +3472,10 @@ fn run_local_search(query: &str) -> Vec<serde_json::Value> {
                 walk(&path, depth + 1, q, max, files, max_depth, budget);
             } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                 let ext_lower = ext.to_lowercase();
+                let sz = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
                 if (AUDIO_EXT.contains(&ext_lower.as_str()) || VIDEO_EXT.contains(&ext_lower.as_str()))
                     && name_str.to_lowercase().contains(q)
+                    && sz > 0
                 {
                     let folder = path.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
                     let size_label = fs::metadata(&path).map(|m| format_size(m.len())).unwrap_or_default();

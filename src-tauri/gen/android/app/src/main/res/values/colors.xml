@@ -7,4 +7,12 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <color name="notif_accent">#C81E3A</color>
+    <color name="notif_accent_dark">#8E1430</color>
+    <color name="notif_track">#4DFFFFFF</color>
+    <color name="notif_panel_top">#FF191920</color>
+    <color name="notif_panel_bottom">#FF0C0C10</color>
+    <color name="notif_text_title">#FFFFFFFF</color>
+    <color name="notif_text_sub">#B3FFFFFF</color>
 </resources>

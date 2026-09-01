@@ -38,7 +38,7 @@ function Toggle({ checked, onChange }) {
     <button
       onClick={() => onChange(!checked)}
       className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
-        checked ? "bg-accent-red" : "bg-white/[0.15]"
+        checked ? "bg-white/[0.35]" : "bg-white/[0.15]"
       }`}
     >
       <span
@@ -154,7 +154,7 @@ export default function Settings({ open, onClose }) {
                     onClick={() => update("defaultRepeat", m)}
                     className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors ${
                       settings.defaultRepeat === m
-                        ? "bg-accent-red text-white"
+                        ? "bg-white/[0.16] text-white ring-1 ring-white/25 font-semibold"
                         : "bg-white/[0.06] text-white/70 hover:bg-white/[0.1]"
                     }`}
                   >

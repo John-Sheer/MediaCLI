@@ -77,13 +77,13 @@ class MainActivity : TauriActivity() {
   }
 
   private fun requestMediaPermissions() {
-    val toAsk = if (Build.VERSION.SDK_INT >= 33) {
-      arrayOf(
-        Manifest.permission.READ_MEDIA_AUDIO,
-        Manifest.permission.READ_MEDIA_VIDEO
-      )
+    val toAsk = mutableListOf<String>()
+    if (Build.VERSION.SDK_INT >= 33) {
+      toAsk.add(Manifest.permission.READ_MEDIA_AUDIO)
+      toAsk.add(Manifest.permission.READ_MEDIA_VIDEO)
+      toAsk.add(Manifest.permission.POST_NOTIFICATIONS)
     } else {
-      arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+      toAsk.add(Manifest.permission.READ_EXTERNAL_STORAGE)
     }
     val missing = toAsk.filter {
       ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED

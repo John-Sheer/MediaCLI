@@ -7,6 +7,7 @@ import { Download, X, RefreshCw } from "lucide-react";
 
 const IS_ANDROID = typeof navigator !== "undefined" && /android/i.test(navigator.userAgent || "");
 const MANIFEST_URL = "https://mediacli-app.web.app/updates/latest.json";
+const DISMISSED_KEY = "mediacli-update-dismissed";
 
 const compareVersions = (a, b) => {
   const pa = String(a).split(".").map(Number);
@@ -28,7 +29,9 @@ export default function UpdateManager() {
   const [downloadedPath, setDownloadedPath] = useState(null);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState(null);
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState(() => {
+    try { return localStorage.getItem(DISMISSED_KEY) || null; } catch { return null; }
+  });
 
   const checkForUpdates = useCallback(async () => {
     try {
@@ -40,17 +43,26 @@ export default function UpdateManager() {
         const entry = manifest.platforms?.["android-arm64"];
         if (!entry) return;
         const current = await getVersion();
-        if (compareVersions(manifest.version, current) <= 0) return;
-        if (!dismissed) {
-          setUpdateInfo({
-            version: manifest.version,
-            notes: manifest.notes || "Nouvelle version disponible",
-            url: entry.url,
-          });
+        if (compareVersions(manifest.version, current) <= 0) {
+          try { localStorage.removeItem(DISMISSED_KEY); } catch {}
+          setDismissed(null);
+          return;
         }
+        const mVersion = manifest.version;
+        let stored = null;
+        try { stored = localStorage.getItem(DISMISSED_KEY); } catch {}
+        if (stored === mVersion) return;
+        setUpdateInfo({
+          version: mVersion,
+          notes: manifest.notes || "Nouvelle version disponible",
+          url: entry.url,
+        });
       } else {
         const update = await check();
-        if (update && !dismissed) {
+        if (update) {
+          let stored = null;
+          try { stored = localStorage.getItem(DISMISSED_KEY); } catch {}
+          if (stored === update.version) return;
           setUpdateInfo({
             version: update.version,
             notes: update.body || "Nouvelle version disponible",
@@ -61,7 +73,7 @@ export default function UpdateManager() {
     } catch (e) {
       console.error("[updater] check failed:", e);
     }
-  }, [dismissed]);
+  }, []);
 
   useEffect(() => {
     checkForUpdates();
@@ -116,6 +128,7 @@ export default function UpdateManager() {
 
   const handleDownload = async () => {
     if (!updateInfo) return;
+    try { localStorage.setItem(DISMISSED_KEY, updateInfo.version); } catch {}
     setDownloading(true);
     setDownloaded(false);
     setProgress(0);
@@ -151,11 +164,14 @@ export default function UpdateManager() {
   };
 
   const handleDismiss = () => {
-    setDismissed(true);
+    if (updateInfo?.version) {
+      try { localStorage.setItem(DISMISSED_KEY, updateInfo.version); } catch {}
+    }
+    setDismissed(updateInfo?.version || "dismissed");
     setUpdateInfo(null);
   };
 
-  if (!updateInfo || dismissed) return null;
+  if (!updateInfo || (dismissed && dismissed === updateInfo.version)) return null;
 
   return (
     <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 w-[90%] max-w-md animate-fade-in">

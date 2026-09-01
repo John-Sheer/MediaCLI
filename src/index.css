@@ -220,10 +220,10 @@ input[type="range"]::-moz-range-thumb {
   transition: all 0.25s ease;
 }
 .tab-pill-active {
-  border-color: rgba(200, 30, 58, 0.45);
-  color: #ff5a72;
-  background: linear-gradient(180deg, rgba(200, 30, 58, 0.12), rgba(200, 30, 58, 0.04));
-  box-shadow: 0 0 16px -4px rgba(200, 30, 58, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.10);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .glow-border {
@@ -236,6 +236,17 @@ input[type="range"]::-moz-range-thumb {
   border-radius: inherit;
   background: linear-gradient(135deg, rgba(225, 29, 72, 0.3), transparent 50%, rgba(225, 29, 72, 0.1));
   z-index: -1;
+}
+
+/* Égaliseur discret "en lecture" */
+.playing-bar {
+  height: 100%;
+  background: #c81e3a;
+  animation: playing 0.9s ease-in-out infinite;
+}
+@keyframes playing {
+  0%, 100% { height: 30%; }
+  50% { height: 100%; }
 }
 
 /* Overlay modal : fond sombre + grain subtil */
@@ -393,4 +404,23 @@ input.vol-line::-moz-range-thumb {
   animation: cursor-blink 1s step-end infinite;
   margin-left: 1px;
   font-weight: 400;
+}
+
+/* Squelettes de chargement (shimmer) */
+@keyframes shimmer-block {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.shimmer-block {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.09) 50%, rgba(255, 255, 255, 0.03) 100%);
+  background-size: 200% 100%;
+  animation: shimmer-block 1.8s ease-in-out infinite;
+}
+
+/* Textes accent-red -> blanc pur éclatant (lisibilité maximale sur fond sombre) */
+[class~="text-accent-red"],
+[class*="text-accent-red/"] {
+  color: #ffffff !important;
+  text-shadow: 0 0 6px rgba(255, 255, 255, 0.85), 0 0 14px rgba(255, 255, 255, 0.55), 0 0 26px rgba(255, 255, 255, 0.35);
+  -webkit-text-stroke: 0.4px rgba(255, 255, 255, 0.7);
 }

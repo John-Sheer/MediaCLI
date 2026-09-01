@@ -45,6 +45,12 @@ export default {
           "0%": { opacity: "0", transform: "scale(0.95)" },
           "100%": { opacity: "1", transform: "scale(1)" },
         },
+        "pill-in": {
+          "0%": { opacity: "0", transform: "translate(-50%, 22px) scale(0.92)" },
+          "45%": { opacity: "1", transform: "translate(-50%, -4px) scale(1.04)" },
+          "70%": { opacity: "1", transform: "translate(-50%, 1px) scale(0.99)" },
+          "100%": { opacity: "1", transform: "translate(-50%, 0) scale(1)" },
+        },
         "slide-in-right": {
           "0%": { opacity: "0", transform: "translateX(12px)" },
           "100%": { opacity: "1", transform: "translateX(0)" },
@@ -63,6 +69,7 @@ export default {
         "fade-in-up": "fade-in-up 0.5s ease-out",
         "fade-in-down": "fade-in-down 0.25s ease-out",
         "scale-in": "scale-in 0.2s ease-out",
+        "pill-in": "pill-in 0.45s cubic-bezier(0.22,1,0.36,1)",
         "slide-in-right": "slide-in-right 0.3s ease-out",
         "shimmer": "shimmer 2.5s linear infinite",
         "pulse-soft": "pulse-soft 2s ease-in-out infinite",

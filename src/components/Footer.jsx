@@ -1,22 +1,22 @@
-import { Logo, CLIText } from "./Logo.jsx";
 import { Settings as SettingsIcon } from "lucide-react";
 
 const COPYRIGHT_YEAR = new Date().getFullYear();
 
-export function Footer({ onAbout, onSettings }) {
+export function Footer({ onSettings }) {
   return (
-    <footer className="fixed bottom-0 left-0 right-0 z-40 backdrop-blur-md bg-black/30" style={{ paddingBottom: `var(--sab, 0px)` }}>
-      <div className="max-w-2xl mx-auto px-5"><div className="h-[1px] bg-white/[0.12]" /></div>
-      <div className="max-w-2xl mx-auto px-5 py-2 flex items-center relative">
-        <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
-          <Logo className="w-4 h-4 opacity-70" />
-          <button onClick={onAbout} className="font-mono text-[11px] tracking-wide hover:text-white/90 transition-colors duration-200">
-            <CLIText />
-          </button>
-          <span className="font-mono text-[11px] text-red-500 tracking-wider font-bold">© {COPYRIGHT_YEAR} Sheer</span>
-        </div>
-        <button onClick={onSettings} className="ml-auto p-1.5 rounded-lg text-white/50 hover:text-white/80 hover:bg-white/[0.06] transition-colors" title="Paramètres">
-          <SettingsIcon size={18} />
+    <footer className="fixed bottom-0 left-0 right-0 z-40 backdrop-blur-xl bg-black/40" style={{ paddingBottom: `var(--sab, 0px)` }}>
+      <div className="max-w-2xl mx-auto px-5"><div className="h-px" style={{ background: `linear-gradient(to right, transparent, rgba(255,59,92,0.25), transparent)` }} /></div>
+      <div className="max-w-2xl mx-auto px-5 py-2 flex items-center justify-between gap-2">
+        <span className="font-mono text-[11px] text-white/45 tracking-wider whitespace-nowrap">
+          © {COPYRIGHT_YEAR} Sheer
+        </span>
+        <button
+          onClick={onSettings}
+          title="Paramètres"
+          className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-white/55 ring-1 ring-white/[0.10] hover:text-white hover:bg-white/[0.06] hover:ring-white/25 transition-all duration-200 active:scale-95"
+        >
+          <SettingsIcon size={13} />
+          <span className="text-[10px] font-medium tracking-wide">Réglages</span>
         </button>
       </div>
     </footer>

@@ -62,7 +62,19 @@ function cycleRepeat(mode) {
   return mode === "off" ? "all" : mode === "all" ? "one" : "off";
 }
 
-function nextIndex(playlist, currentId, isLocal, shuffle, repeatMode) {
+// Un morceau est local si c'est un fichier : marqué "Local", ou porteur d'un
+// chemin (.path) — les morceaux streamés n'ont jamais de .path.
+export function isLocalTrack(t) {
+  return !!t && (t.channel === "Local" || typeof t.path === "string");
+}
+
+// Clé d'identité d'un morceau quelle que soit sa source : .path pour un
+// fichier local, sinon .id (YouTube pour les streams).
+function trackKey(t) {
+  return (t && (t.path || t.id)) ?? null;
+}
+
+function nextIndex(playlist, currentId, shuffle, repeatMode) {
   if (playlist.length === 0) return -1;
   if (shuffle && playlist.length > 1) {
     let r;
@@ -70,19 +82,19 @@ function nextIndex(playlist, currentId, isLocal, shuffle, repeatMode) {
     do {
       r = Math.floor(Math.random() * playlist.length);
       attempts++;
-    } while (playlist[r] && (isLocal ? (playlist[r].path || playlist[r].id) : playlist[r].id) === currentId && attempts < playlist.length);
+    } while (playlist[r] && trackKey(playlist[r]) === currentId && attempts < playlist.length);
     return r;
   }
-  const idx = playlist.findIndex((s) => (isLocal ? (s.path || s.id) : s.id) === currentId);
+  const idx = playlist.findIndex((s) => trackKey(s) === currentId);
   if (idx === -1) return 0;
   if (idx < playlist.length - 1) return idx + 1;
   if (repeatMode === "all") return 0;
   return -1;
 }
 
-function prevIndex(playlist, currentId, isLocal, repeatMode) {
+function prevIndex(playlist, currentId, repeatMode) {
   if (playlist.length === 0) return -1;
-  const idx = playlist.findIndex((s) => (isLocal ? (s.path || s.id) : s.id) === currentId);
+  const idx = playlist.findIndex((s) => trackKey(s) === currentId);
   if (idx === -1) return 0;
   if (idx > 0) return idx - 1;
   if (repeatMode === "all") return playlist.length - 1;
@@ -146,35 +158,37 @@ function reducer(state, action) {
     case "PLAY_AT": {
       const item = state.playlist[action.index];
       if (!item) return state;
-      if (state.isLocal) {
+      if (isLocalTrack(item)) {
         const path = item.path || item.id;
         return {
           ...state,
+          isLocal: true,
           currentSong: { id: path, title: item.title || item.name, channel: "Local", thumbnail: null, duration: 0 },
           streamUrl: `${api.base}/local?path=${encodeURIComponent(path)}`,
         };
       }
       return {
         ...state,
+        isLocal: false,
         currentSong: item,
         streamUrl: `${api.base}/${state.torActive ? "stream-tor" : "stream"}?id=${encodeURIComponent(item.id)}`,
       };
     }
 
     case "PLAY_NEXT": {
-      const idx = nextIndex(state.playlist, state.currentSong?.id, state.isLocal, state.shuffle, state.repeatMode);
+      const idx = nextIndex(state.playlist, state.currentSong?.id, state.shuffle, state.repeatMode);
       if (idx === -1) return state;
       return reducer(state, { type: "PLAY_AT", index: idx });
     }
 
     case "PLAY_PREV": {
-      const idx = prevIndex(state.playlist, state.currentSong?.id, state.isLocal, state.repeatMode);
+      const idx = prevIndex(state.playlist, state.currentSong?.id, state.repeatMode);
       if (idx === -1) return state;
       return reducer(state, { type: "PLAY_AT", index: idx });
     }
 
     case "PLAY_ENDED": {
-      if (state.repeatMode === "one") return reducer(state, { type: "PLAY_AT", index: state.playlist.findIndex((s) => (state.isLocal ? (s.path || s.id) : s.id) === state.currentSong?.id) });
+      if (state.repeatMode === "one") return reducer(state, { type: "PLAY_AT", index: state.playlist.findIndex((s) => trackKey(s) === state.currentSong?.id) });
       return reducer(state, { type: "PLAY_NEXT" });
     }
 

@@ -1,4 +1,10 @@
 <resources>
     <string name="app_name">"MédiaCLI"</string>
     <string name="main_activity_title">"MédiaCLI"</string>
+    <string name="notif_logo">"logo MediaCLI"</string>
+    <string name="notif_prev">"Précédent"</string>
+    <string name="notif_next">"Suivant"</string>
+    <string name="notif_toggle">"Lecture / pause"</string>
+    <string name="notif_stop">"Arrêter"</string>
+    <string name="notif_brand">"mediaCLI"</string>
 </resources>
