@@ -770,7 +770,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       }
     };
     const backAfter = (ms, transition) => setTimeout(() => back(transition), ms);
-    // Gesture verticale (haut = déplier le lecteur, bas = rien).
+    // Gesture verticale (haut = déplier le lecteur, bas = play/pause).
     if (sw.moved && Math.abs(dy) > THRESHOLD && Math.abs(dy) > Math.abs(dx)) {
       pillSuppressClick.current = true;
       if (dy < 0) {
@@ -785,6 +785,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
         setPillReveal(40);
         backAfter(180);
         setTimeout(() => { pillSuppressClick.current = false; }, 400);
+        togglePlayRef.current();
       }
       return;
     }
