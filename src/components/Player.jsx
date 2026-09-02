@@ -1161,6 +1161,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     {!fullscreen && hidden && currentSong && (
       <button
         ref={pillRef}
+        data-tutorial="pill-gestures"
         onAnimationEnd={() => { pillSeenOnce.current = true; }}
         onClick={(e) => {
           e.preventDefault();
@@ -1453,11 +1454,11 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
                     sliderH={20}
                   />
                   {lyricLines.length > 0 && (
-                    <button onClick={() => setShowLyrics((v) => !v)} className={`relative bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${showLyrics ? "text-accent-red" : "text-white/85 hover:text-white"}`} title="Paroles synchronisées">
+                    <button onClick={() => setShowLyrics((v) => !v)} data-tutorial="lyrics" className={`relative bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${showLyrics ? "text-accent-red" : "text-white/85 hover:text-white"}`} title="Paroles synchronisées">
                       <Mic size={18} />
                     </button>
                   )}
-                  <button onClick={() => setShowSleep((o) => !o)} className={`relative bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${sleepMinutes > 0 || showSleep ? "text-accent-red" : "text-white/85 hover:text-white"}`} title="Minuterie de sommeil">
+                  <button onClick={() => setShowSleep((o) => !o)} data-tutorial="sleep-timer" className={`relative bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${sleepMinutes > 0 || showSleep ? "text-accent-red" : "text-white/85 hover:text-white"}`} title="Minuterie de sommeil">
                     <Timer size={18} />
                   </button>
                   {!isLocalPlayback && (

@@ -164,6 +164,7 @@ function SongNameRow({ file, folderLabel, sizeLabel, index, playing, onPlay, dra
     >
       <div
         {...gripHandlers}
+        data-tutorial="drag-reorder"
         ref={gripRef}
         style={{ touchAction: "none" }}
         className="w-3.5 h-3.5 text-white/80 shrink-0 cursor-grab active:cursor-grabbing"

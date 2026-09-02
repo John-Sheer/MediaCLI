@@ -33,7 +33,7 @@ function ErrorTag({ info, onAuthorize }) {
   );
 }
 
-export default function SongCard({ song, onPlay, onDownload, onTogglePause, status, progress, paused = {}, errors = {}, menuOpen, onMenuToggle, playlists = {}, onAddToPlaylist, onCreateAndAdd, isPlaying, onAuthorize, showPlay = false, onReveal }) {
+export default function SongCard({ song, onPlay, onDownload, onTogglePause, status, progress, paused = {}, errors = {}, menuOpen, onMenuToggle, playlists = {}, onAddToPlaylist, onCreateAndAdd, isPlaying, onAuthorize, showPlay = false, onReveal, tutorial }) {
   const [showPlSub, setShowPlSub] = useState(false);
 
   const addToPl = (id) => {
@@ -141,6 +141,7 @@ export default function SongCard({ song, onPlay, onDownload, onTogglePause, stat
     <div className="relative animate-fade-in">
       <div
         onClick={() => { if (!isPlaying && onReveal) onReveal(); }}
+        data-tutorial={tutorial}
         className={`group relative rounded-2xl border cursor-pointer transition-all duration-300 overflow-hidden bg-panel/70 border-white/[0.07] hover:border-white/[0.18] hover:bg-white/[0.03] hover:shadow-soft`}
       >
         <div className={`relative aspect-video overflow-hidden transition-all duration-300`}>
@@ -186,6 +187,7 @@ export default function SongCard({ song, onPlay, onDownload, onTogglePause, stat
 
           <button
             onClick={(e) => { e.stopPropagation(); onMenuToggle(song.id); }}
+            data-tutorial="more-actions"
             title="Plus d'actions"
             className="absolute top-2 right-2 z-20 p-2 rounded-lg bg-black/45 backdrop-blur-md text-white/90 hover:text-white hover:bg-black/70 transition-all duration-200 active:scale-90"
           >

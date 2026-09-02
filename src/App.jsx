@@ -8,7 +8,7 @@ import PlaylistsView from "./components/PlaylistsView.jsx";
 import { AboutModal } from "./components/AboutModal.jsx";
 import { VpnModal } from "./components/VpnModal.jsx";
 import UpdateManager from "./components/UpdateManager.jsx";
-import { Onboarding } from "./components/Onboarding.jsx";
+import { TutorialManager } from "./components/Tutorial.jsx";
 import Player from "./components/Player.jsx";
 import QueuePanel from "./components/QueuePanel.jsx";
 import Settings from "./components/Settings.jsx";
@@ -31,21 +31,14 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   const [permDenied, setPermDenied] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(false);
   const [playerReveal, setPlayerReveal] = useState(0);
 
-  // Première installation : au démarrage, montrer les fonctionnalités et leur
-  // usage. On ne repasse la modale qu'après une nouvelle installation (flag).
+  // Migration : on force le flag de l'ancien onboarding à "vu" (il ne sert plus),
+  // mais ON ne désactive PAS le nouveau système de tutoriels contextuels : ils
+  // s'affichent pour tout le monde à la première apparition de chaque fonction.
   useEffect(() => {
-    let onboarded = false;
-    try { onboarded = localStorage.getItem("mediacli-onboarded") === "1"; } catch {}
-    if (!onboarded) setShowOnboarding(true);
-  }, []);
-
-  const closeOnboarding = () => {
-    setShowOnboarding(false);
     try { localStorage.setItem("mediacli-onboarded", "1"); } catch {}
-  };
+  }, []);
 
   // Au premier lancement sur Android, « Tous les fichiers » est indispensable
   // pour écrire dans /storage/emulated/0/MediaCLI. Si l'accès n'est pas encore
@@ -452,7 +445,7 @@ export default function App() {
           </div>
         </div>
       )}
-      {showOnboarding && <Onboarding onClose={closeOnboarding} />}
+      <TutorialManager />
     </div>
   );
 }

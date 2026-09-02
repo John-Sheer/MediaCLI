@@ -45,7 +45,7 @@ function IdleDiscover({ state, onSearch, onOpenPlayer, onResume }) {
           </span>
         </button>
       )}
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-3" data-tutorial="genre-search">
         <Sparkles className="w-3.5 h-3.5 text-white/70" />
         <p className="text-[11px] text-white/85 font-medium">Explorer par genre</p>
         <span className="text-[9.5px] text-white/40 font-mono hidden sm:inline">un tap lance la recherche</span>
@@ -199,13 +199,14 @@ export function StreamingView({ state, onSearch, onPlay, onDownload, onTogglePau
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 px-3 pt-2 animate-fade-in-up" onMouseLeave={() => onMenuToggle(null)}>
-            {results.map((song) => (
+            {results.map((song, idx) => (
               <SongCard
                 key={song.id}
                 song={song}
                 onPlay={onPlay}
                 onDownload={onDownload}
                 onTogglePause={onTogglePause}
+                tutorial={idx === 0 ? "tap-play" : undefined}
                 status={{
                   audio: downloadStatus[`${song.id}-audio`],
                   video: downloadStatus[`${song.id}-video`],
