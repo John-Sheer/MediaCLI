@@ -370,13 +370,23 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       return;
     }
 
+    if (isLocal && isVideoFile) {
+      // video locale : ouvre le lecteur puis le replie en pillule (on montre qu'on ecoute une video).
+      autoOpenRef.current = true;
+      setHidden(false);
+      showControlsTempRef.current?.();
+      collapseTimerRef.current = setTimeout(() => {
+        if (!autoOpenRef.current) return;
+        setHidden(true);
+      }, 3200);
+      return () => clearTimeout(collapseTimerRef.current);
+    }
+
+    // Source non locale (streaming / video internet) : on ne connait pas encore
+    // le type. Ne JAMAIS ouvrir le lecteur par avance, sinon un flux audio
+    // affiche un flash de lecteur normal. La decision est prise dans
+    // onLoadedMetadata via e.target.videoWidth.
     autoOpenRef.current = true;
-    setHidden(false);
-    showControlsTempRef.current?.();
-    collapseTimerRef.current = setTimeout(() => {
-      if (!autoOpenRef.current) return;
-      setHidden(true);
-    }, 3200);
     return () => clearTimeout(collapseTimerRef.current);
   }, [currentSong?.id, streamUrl]);
 
@@ -798,7 +808,8 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     const sw = pillSwipe.current;
     pillSwipe.current = null;
     if (!sw) return;
-    const THRESHOLD = 70;
+    const THRESHOLD_UP = 70;   // ouverture du lecteur (geste vers le haut)
+    const THRESHOLD_DOWN = 35; // pause/lecture (geste vers le bas) : plus sensible
     const dx = sw.dx;
     const dy = sw.dy;
     const back = (transition) => {
@@ -809,8 +820,9 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       }
     };
     const backAfter = (ms, transition) => setTimeout(() => back(transition), ms);
+    const threshold = dy < 0 ? THRESHOLD_UP : THRESHOLD_DOWN;
     // Gesture verticale (haut = déplier le lecteur, bas = play/pause).
-    if (sw.moved && Math.abs(dy) > THRESHOLD && Math.abs(dy) > Math.abs(dx)) {
+    if (sw.moved && Math.abs(dy) > threshold && Math.abs(dy) > Math.abs(dx)) {
       pillSuppressClick.current = true;
       if (dy < 0) {
         autoOpenRef.current = false;
@@ -830,8 +842,8 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       }
       return;
     }
-    const triggerNext = sw.moved && dx > THRESHOLD;
-    const triggerPrev = sw.moved && dx < -THRESHOLD;
+    const triggerNext = sw.moved && dx > THRESHOLD_UP;
+    const triggerPrev = sw.moved && dx < -THRESHOLD_UP;
     if (!triggerNext && !triggerPrev) {
       back();
       return;
@@ -1122,7 +1134,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
               invoke("update_position", { position_ms: Math.round(t * 1000), duration_ms: Math.round(dd * 1000) }).catch(() => {});
             }
           }}
-          onLoadedMetadata={(e) => { clearLoadTimer(); setDuration(e.target.duration); setBuffering(false); setStreamError(null); setHasVideo(e.target.videoWidth > 0); if (streamUrl && !streamUrl.includes("/local?path=") && e.target.videoWidth === 0 && autoOpenRef.current) { autoOpenRef.current = false; clearTimeout(collapseTimerRef.current); setTimeout(() => setHidden(true), 300); } if (videoRef.current) { videoRef.current.volume = volume; videoRef.current.playbackRate = pitch; } const rp = resumePosRef.current > 0 ? resumePosRef.current : resumeTime; if (rp > 1 && videoRef.current) { try { videoRef.current.currentTime = rp; } catch {} } resumePosRef.current = 0; const dur2 = Number.isFinite(e.target.duration) ? e.target.duration : 0; if (IS_ANDROID && dur2 > 0) { invoke("update_position", { position_ms: Math.round((e.target.currentTime || 0) * 1000), duration_ms: Math.round(dur2 * 1000) }).catch(() => {}); } if (videoRef.current) { setVideoMuted(true); videoRef.current.play().then(() => { setVideoMuted(false); setPlaying(true); }).catch(() => setBuffering(false)); } }}
+          onLoadedMetadata={(e) => { clearLoadTimer(); setDuration(e.target.duration); setBuffering(false); setStreamError(null); setHasVideo(e.target.videoWidth > 0); if (!streamUrl.includes("/local?path=") && autoOpenRef.current) { if (e.target.videoWidth > 0) { autoOpenRef.current = true; setHidden(false); showControlsTempRef.current?.(); collapseTimerRef.current = setTimeout(() => { if (autoOpenRef.current) setHidden(true); }, 3200); } else { autoOpenRef.current = false; clearTimeout(collapseTimerRef.current); setHidden(true); } } if (videoRef.current) { videoRef.current.volume = volume; videoRef.current.playbackRate = pitch; } const rp = resumePosRef.current > 0 ? resumePosRef.current : resumeTime; if (rp > 1 && videoRef.current) { try { videoRef.current.currentTime = rp; } catch {} } resumePosRef.current = 0; const dur2 = Number.isFinite(e.target.duration) ? e.target.duration : 0; if (IS_ANDROID && dur2 > 0) { invoke("update_position", { position_ms: Math.round((e.target.currentTime || 0) * 1000), duration_ms: Math.round(dur2 * 1000) }).catch(() => {}); } if (videoRef.current) { setVideoMuted(true); videoRef.current.play().then(() => { setVideoMuted(false); setPlaying(true); }).catch(() => setBuffering(false)); } }}
           onWaiting={() => setBuffering(true)}
           onPlaying={() => { clearLoadTimer(); userPauseRef.current = false; setPlaying(true); setBuffering(false); setStreamError(null); }}
           onEnded={() => {
