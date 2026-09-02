@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { FolderOpen, Music, Video, Play, GripVertical, Loader2, Search, MoreVertical, ListPlus, Plus, FolderSearch } from "lucide-react";
+import { FolderOpen, Music, Video, Play, Repeat, Shuffle, GripVertical, Loader2, Search, MoreVertical, ListPlus, Plus, FolderSearch } from "lucide-react";
 import { api } from "../api/client";
 
 function PlayingIcon({ className = "w-3.5 h-3.5" }) {
@@ -470,9 +470,6 @@ export function LocalView({ state, actions, onPlayFile, playlists, onAddToPlayli
         </div>
 
         <div className="flex items-center justify-between gap-3 mb-3">
-          <div className="w-10 h-10 rounded-xl bg-white/[0.06] ring-1 ring-white/[0.15] flex items-center justify-center shrink-0">
-            <FolderOpen className="w-5 h-5 text-white/90" />
-          </div>
           <button
             onClick={() => actions.playAllFolders()}
             title="Lire toutes les pistes de tous les dossiers"
@@ -480,6 +477,22 @@ export function LocalView({ state, actions, onPlayFile, playlists, onAddToPlayli
           >
             <Play className="w-3.5 h-3.5 ml-px" fill="currentColor" />
             Tout lire
+          </button>
+          <button
+            onClick={() => actions.playAllFolders("loop")}
+            title="Lire toutes les pistes en boucle (répète la fin de la liste)"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[11px] font-semibold text-white bg-white/[0.08] ring-1 ring-white/[0.14] hover:bg-white/[0.14] hover:ring-white/25 transition-all duration-200 active:scale-95"
+          >
+            <Repeat className="w-3.5 h-3.5" />
+            Boucle
+          </button>
+          <button
+            onClick={() => actions.playAllFolders("shuffle")}
+            title="Lire toutes les pistes en mode aléatoire"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[11px] font-semibold text-white bg-white/[0.08] ring-1 ring-white/[0.14] hover:bg-white/[0.14] hover:ring-white/25 transition-all duration-200 active:scale-95"
+          >
+            <Shuffle className="w-3.5 h-3.5" />
+            Aléatoire
           </button>
         </div>
 

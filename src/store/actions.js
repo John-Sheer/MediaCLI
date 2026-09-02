@@ -56,8 +56,18 @@ export function useActions() {
     }
   };
 
-  const play = (song, playlist) => dispatch({ type: "PLAY", song, playlist });
-  const playLocal = (song, path, playlist) => dispatch({ type: "PLAY_LOCAL", song, path, playlist });
+  // Mode de lecture demandé à l'écran (boutons) : "loop" = répéter la liste,
+// "shuffle" = aléatoire, sinon on applique {shuffle:false, repeatMode:"off"}.
+const modeFlags = (mode) => {
+  switch (mode) {
+    case "loop": return { shuffle: false, repeatMode: "all" };
+    case "shuffle": return { shuffle: true, repeatMode: "off" };
+    default: return {};
+  }
+};
+
+  const play = (song, playlist, mode) => dispatch({ type: "PLAY", song, playlist, ...modeFlags(mode) });
+  const playLocal = (song, path, playlist, mode) => dispatch({ type: "PLAY_LOCAL", song, path, playlist, ...modeFlags(mode) });
   const saveCurrentToResume = () => {
     if (!state.currentSong || !state.streamUrl) return;
     try {
@@ -84,6 +94,28 @@ export function useActions() {
   };
   const playEnded = () => dispatch({ type: "PLAY_ENDED" });
   const stop = () => dispatch({ type: "STOP_PLAYBACK" });
+  const streamPlay = (song, playlist, mode) => {
+    if (!song) return;
+    const local = !!song && (song.channel === "Local" || typeof song.path === "string");
+    let resumeTime = 0;
+    try {
+      // Position réelle de la dernière lecture (écrite par le lecteur toutes les ~3s).
+      const r = JSON.parse(localStorage.getItem("mediacli-resume") || "null");
+      if (r && r.song) {
+        const key = song.path || song.id;
+        if (r.song.id === key || r.song.path === key) resumeTime = Number.isFinite(r.time) ? r.time : 0;
+      }
+    } catch {}
+    dispatch({
+      type: "STREAM_PLAY",
+      song,
+      playlist,
+      local,
+      path: local ? (song.path || song.id) : undefined,
+      resumeTime,
+      ...modeFlags(mode),
+    });
+  };
 
   const download = async (song, format) => {
     const key = `${song.id}-${format}`;
@@ -315,7 +347,7 @@ export function useActions() {
 
   const resetFolder = () => dispatch({ type: "LOCAL_RESET_FOLDER" });
 
-  const playAllFolders = async () => {
+  const playAllFolders = async (mode) => {
     const dirs = state.localDirs || [];
     const all = [];
     for (const d of dirs) {
@@ -335,6 +367,7 @@ export function useActions() {
       song: { id: first.path, title: first.name, channel: "Local", thumbnail: null, duration: 0 },
       path: first.path,
       playlist: all,
+      ...modeFlags(mode),
     });
   };
 
@@ -354,6 +387,7 @@ export function useActions() {
     playAt,
     playEnded,
     stop,
+    streamPlay,
     download,
     togglePause,
     setTor,

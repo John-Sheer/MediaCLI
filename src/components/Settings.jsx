@@ -169,6 +169,15 @@ export default function Settings({ open, onClose }) {
             <SettingRow label="Proxy Tor (yt-dlp)" description="Utiliser le proxy pour les téléchargements">
               <Toggle checked={settings.proxyEnabled} onChange={(v) => update("proxyEnabled", v)} />
             </SettingRow>
+            <div className="rounded-xl bg-white/[0.03] p-3">
+              <p className="text-[9px] font-mono uppercase tracking-[0.15em] text-white/40 mb-2">Formats pris en charge</p>
+              <p className="text-[10px] font-mono text-white/55 leading-relaxed">
+                <span className="text-white/35">Audio :</span> mp3, m4a, ogg, wav, flac, aac, webm
+              </p>
+              <p className="text-[10px] font-mono text-white/55 leading-relaxed">
+                <span className="text-white/35">Vidéo :</span> mp4, mkv, mov, avi, m4v, webm
+              </p>
+            </div>
           </Section>
 
           <Section icon={Bell} title="Système">

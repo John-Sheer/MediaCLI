@@ -252,15 +252,15 @@ export default function App() {
 
   const handleAuthorizeAccess = handlePermAuthorize;
 
-  const handlePlayPlaylist = (id, trackId) => {
+  const handlePlayPlaylist = (id, trackId, mode) => {
     const pl = state.playlists[id];
     if (!pl || pl.tracks.length === 0) return;
     const start = trackId ? pl.tracks.findIndex((t) => (t.path || t.id) === trackId) : 0;
     const first = pl.tracks[start >= 0 ? start : 0];
     if (isLocalTrack(first)) {
-      actions.playLocal(first, first.path || first.id, pl.tracks);
+      actions.playLocal(first, first.path || first.id, pl.tracks, mode);
     } else {
-      actions.play(first, pl.tracks);
+      actions.play(first, pl.tracks, mode);
     }
   };
 
@@ -326,6 +326,7 @@ export default function App() {
                 onOpenDownloads={handleOpenDownloads}
                 onAuthorize={handleAuthorizeAccess}
                 onOpenPlayer={() => setPlayerReveal((n) => n + 1)}
+                onStreamPlay={actions.streamPlay}
               />
             )}
 
@@ -356,6 +357,7 @@ export default function App() {
       <Player
         currentSong={state.currentSong}
         streamUrl={state.streamUrl}
+        resumeTime={state.resumeTime}
         onFullscreenChange={(v) => dispatch({ type: "SET_PLAYER_FULLSCREEN", value: v })}
         onClose={actions.stop}
         onNext={actions.playNext}

@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect, useCallback } from "react";
-import { Music, Play, Trash2, ListMusic, Plus, X, Pencil, Check, Loader2, FolderOpen, ChevronLeft, ChevronDown, ListRestart, Video } from "lucide-react";
+import { Music, Play, Repeat, Shuffle, Trash2, ListMusic, Plus, X, Pencil, Check, Loader2, FolderOpen, ChevronLeft, ChevronDown, ListRestart, Video } from "lucide-react";
 import { api } from "../api/client.js";
+import ConfirmModal from "./ConfirmModal.jsx";
 
 const THUMB_PROXY = "http://127.0.0.1:8787/thumb?url=";
 
@@ -278,6 +279,7 @@ function PlaylistCard({ id, playlist, isOpen, onToggle, onPlay, onDelete, onRena
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(playlist.name);
   const [showManager, setShowManager] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const tracks = playlist.tracks || [];
   const trackCount = tracks.length;
   const coverTabs = tracks.filter((t) => t.thumbnail).slice(0, 4);
@@ -366,6 +368,20 @@ function PlaylistCard({ id, playlist, isOpen, onToggle, onPlay, onDelete, onRena
             >
               <Play className="w-4 h-4 ml-px" fill="currentColor" />
             </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onPlay(id, undefined, "loop"); }}
+              title="Lire la playlist en boucle"
+              className="w-9 h-9 rounded-full bg-white/[0.06] text-white/90 ring-1 ring-white/12 hover:bg-white/[0.12] hover:ring-white/25 transition-all duration-200 active:scale-90 flex items-center justify-center"
+            >
+              <Repeat className="w-4 h-4" />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onPlay(id, undefined, "shuffle"); }}
+              title="Lire la playlist en aléatoire"
+              className="w-9 h-9 rounded-full bg-white/[0.06] text-white/90 ring-1 ring-white/12 hover:bg-white/[0.12] hover:ring-white/25 transition-all duration-200 active:scale-90 flex items-center justify-center"
+            >
+              <Shuffle className="w-4 h-4" />
+            </button>
             <ChevronDown
               className={
                 "w-4 h-4 transition-transform duration-300 " +
@@ -386,6 +402,22 @@ function PlaylistCard({ id, playlist, isOpen, onToggle, onPlay, onDelete, onRena
                 >
                   <Play className="w-3.5 h-3.5 ml-px" fill="currentColor" />
                   Tout lire
+                </button>
+                <button
+                  onClick={() => onPlay(id, undefined, "loop")}
+                  title="Lire la playlist en boucle"
+                  className={ACTION_BTN + " shrink-0"}
+                >
+                  <Repeat className="w-3.5 h-3.5" />
+                  Boucle
+                </button>
+                <button
+                  onClick={() => onPlay(id, undefined, "shuffle")}
+                  title="Lire la playlist en aléatoire"
+                  className={ACTION_BTN + " shrink-0"}
+                >
+                  <Shuffle className="w-3.5 h-3.5" />
+                  Aléatoire
                 </button>
                 <span className="text-[9.5px] font-mono text-white/50 whitespace-nowrap overflow-hidden text-ellipsis">
                   {trackCount === 0 ? "vide" : `${totalLabel || "—"} · ${trackCount} piste${trackCount !== 1 ? "s" : ""}`}
@@ -411,7 +443,7 @@ function PlaylistCard({ id, playlist, isOpen, onToggle, onPlay, onDelete, onRena
                 {trackCount > 0 ? "Réorganiser" : "Ajouter"}
               </button>
               <button
-                onClick={() => onDelete(id)}
+                onClick={() => setConfirmDelete(true)}
                 className={ACTION_BTN + " hover:text-red-400 hover:bg-red-400/15 hover:ring-red-400/30"}
                 title="Supprimer"
               >
@@ -490,6 +522,13 @@ function PlaylistCard({ id, playlist, isOpen, onToggle, onPlay, onDelete, onRena
           onClose={() => setShowManager(false)}
         />
       )}
+      <ConfirmModal
+        open={confirmDelete}
+        title="Supprimer la playlist ?"
+        message={`« ${playlist.name} » sera définitivement supprimée (${tracks.length} titre${tracks.length !== 1 ? "s" : ""}). Cette action est irréversible.`}
+        onConfirm={() => { onDelete(id); setConfirmDelete(false); }}
+        onClose={() => setConfirmDelete(false)}
+      />
     </>
   );
 }

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FolderOpen, AlertCircle, RefreshCw, X, Sparkles, Play, Music2 } from "lucide-react";
+import { AlertCircle, RefreshCw, X, Sparkles, Play, Music2 } from "lucide-react";
 import SearchBar from "./SearchBar.jsx";
 import SongCard from "./SongCard.jsx";
 import { addRecentSearch, getRecentSearches } from "../lib/suggestions.js";
@@ -10,14 +10,15 @@ const IDLE_TAGS = [
   "rock", "reggae", "house", "jazz", "k-pop",
 ];
 
-function IdleDiscover({ state, onSearch, onOpenPlayer }) {
+function IdleDiscover({ state, onSearch, onOpenPlayer, onResume }) {
   const song = state.currentSong;
+  const queue = state.playlist || [];
   return (
     <div className="animate-fade-in-up max-w-lg">
       {song && (
         <button
-          onClick={onOpenPlayer}
-          title="Ouvrir le lecteur"
+          onClick={() => onResume && onResume(song, queue)}
+          title="Reprendre la lecture en cours"
           className="w-full flex items-center gap-3 rounded-2xl ring-1 ring-white/[0.08] bg-white/[0.03] p-3 mb-5 text-left hover:bg-white/[0.05] hover:ring-white/20 transition-all duration-200 active:scale-[0.99]"
         >
           <span className="relative w-11 h-11 rounded-xl overflow-hidden ring-1 ring-white/15 shrink-0">
@@ -39,7 +40,7 @@ function IdleDiscover({ state, onSearch, onOpenPlayer }) {
             <span className="block truncate text-[10px] text-muted">{song.channel}</span>
           </span>
           <span className="flex items-center gap-1 text-[10px] text-red/90 shrink-0">
-            Ouvrir
+            Reprendre
             <Play className="w-3 h-3 ml-px" fill="currentColor" />
           </span>
         </button>
@@ -123,7 +124,7 @@ function SearchLabel() {
   );
 }
 
-export function StreamingView({ state, onSearch, onPlay, onDownload, onTogglePause, onQueryChange, onMenuToggle, onAddToPlaylist, onCreateAndAdd, onOpenDownloads, onResume, onAuthorize, onOpenPlayer }) {
+export function StreamingView({ state, onSearch, onPlay, onDownload, onTogglePause, onQueryChange, onMenuToggle, onAddToPlaylist, onCreateAndAdd, onOpenDownloads, onResume, onAuthorize, onOpenPlayer, onStreamPlay }) {
   const { results, loading, searchError, query, menuSongId, downloadStatus, downloadProgress, downloadPaused, downloadErrors, playlists, currentSong, isLocal } = state;
   const activeCount = Object.values(downloadStatus).filter((s) => s === "downloading").length;
 
@@ -151,7 +152,7 @@ export function StreamingView({ state, onSearch, onPlay, onDownload, onTogglePau
 
       {!loading && results.length === 0 && !searchError && (
         <div className="px-4 pb-6">
-          <IdleDiscover state={state} onSearch={handleSearch} onOpenPlayer={onOpenPlayer} />
+          <IdleDiscover state={state} onSearch={handleSearch} onResume={onStreamPlay} />
         </div>
       )}
 
@@ -184,14 +185,6 @@ export function StreamingView({ state, onSearch, onPlay, onDownload, onTogglePau
                 )}
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  onClick={() => onOpenDownloads && onOpenDownloads()}
-                  title="Ouvrir le dossier des téléchargements"
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] text-white/75 hover:text-white/90 hover:bg-white/[0.06] transition-all duration-200 active:scale-95"
-                >
-                  <FolderOpen className="w-3.5 h-3.5" />
-                  Dossier
-                </button>
                 <button
                   onClick={handleClear}
                   title="Effacer la recherche"

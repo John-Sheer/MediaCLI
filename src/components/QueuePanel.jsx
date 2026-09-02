@@ -1,5 +1,6 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { X, ListMusic } from "lucide-react";
+import ConfirmModal from "./ConfirmModal.jsx";
 
 
 export default function QueuePanel({
@@ -19,6 +20,7 @@ export default function QueuePanel({
   const dragOffset = useRef({ x: 0, y: 0 });
   const [pos, setPos] = useState({ x: window.innerWidth - 340, y: 120 });
   const [tab, setTab] = useState("queue");
+  const [confirmDel, setConfirmDel] = useState(null); // { type: "playlist"|"track", id, trackId, name, title }
 
 
   const handleDragStart = useCallback((e) => {
@@ -124,7 +126,7 @@ export default function QueuePanel({
                     <p className="text-[11px] font-medium text-white/90 truncate">{pl.name}</p>
                     <p className="text-[9px] text-white/80">{pl.tracks.length} piste{pl.tracks.length > 1 ? "s" : ""}</p>
                   </button>
-                  <button onClick={() => { if (window.confirm(`Supprimer "${pl.name}" ?`)) onDeletePlaylist && onDeletePlaylist(pl.id); }} className="p-1 rounded-md text-white/80 hover:text-accent-red hover:bg-accent-red/10 transition-colors">
+                  <button onClick={() => setConfirmDel({ type: "playlist", id: pl.id, name: pl.name, count: pl.tracks.length })} className="p-1 rounded-md text-white/80 hover:text-accent-red hover:bg-accent-red/10 transition-colors">
                     <X className="w-3 h-3" />
                   </button>
                 </div>
@@ -135,7 +137,7 @@ export default function QueuePanel({
                         <span className="block truncate text-[10px] text-white/85">{t.title}</span>
                         <span className="block truncate text-[8px] text-green-400/85">{t.channel}</span>
                       </button>
-                      <button onClick={() => onRemoveFromPlaylist && onRemoveFromPlaylist(pl.id, t.id)} className="p-0.5 rounded text-white/80 hover:text-accent-red transition-colors">
+                      <button onClick={() => setConfirmDel({ type: "track", id: pl.id, trackId: t.id, title: t.title, name: pl.name })} className="p-0.5 rounded text-white/80 hover:text-accent-red transition-colors">
                         <X className="w-2.5 h-2.5" />
                       </button>
                     </div>
@@ -146,6 +148,20 @@ export default function QueuePanel({
           </>
         )}
       </div>
+      <ConfirmModal
+        open={!!confirmDel}
+        title={confirmDel?.type === "playlist" ? "Supprimer la playlist ?" : "Retirer le titre ?"}
+        message={confirmDel?.type === "playlist"
+          ? `« ${confirmDel.name} » sera définitivement supprimée (${confirmDel.count} titre${confirmDel.count !== 1 ? "s" : ""}).`
+          : `« ${confirmDel.title} » sera retiré de la playlist « ${confirmDel.name} ».`}
+        confirmText={confirmDel?.type === "playlist" ? "Supprimer" : "Retirer"}
+        onConfirm={() => {
+          if (confirmDel?.type === "playlist") onDeletePlaylist && onDeletePlaylist(confirmDel.id);
+          else if (confirmDel?.type === "track") onRemoveFromPlaylist && onRemoveFromPlaylist(confirmDel.id, confirmDel.trackId);
+          setConfirmDel(null);
+        }}
+        onClose={() => setConfirmDel(null)}
+      />
     </div>
   );
 }

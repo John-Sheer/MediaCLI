@@ -237,12 +237,16 @@ foreach ($id in @("dlWindows","dlPortable","dlAndroid")) {
     $html = [regex]::Replace($html, [regex]::Escape($oldUrl), $u, [System.Text.RegularExpressions.RegexOptions]::None)
   }
 }
-# insere l'entree de changelog en tete
+# insère l'entrée de changelog EN TÊTE, de façon IDEMPOTENTE : toute entrée
+# existante pour la même version est d'abord retirée (re-run du même tag).
+$escVer = [regex]::Escape($Version)
+$rxVer = "(?s)<div class=`"cl-item`">\s*<div class=`"cl-date`">v$escVer.*?</div>\s*</div>"
+$html = [regex]::Replace($html, $rxVer, '')
 $entry = "<div class=`"cl-item`">`n      <div class=`"cl-date`">v$Version — Août 2026</div>`n      <div class=`"cl-notes`">Version $Version - publication automatisee (URLs fraiches, APK a jour).</div>`n    </div>`n    "
 $anchor = '<div class="cl-item">'
 $html = $html.Replace($anchor, $entry + $anchor)
 [System.IO.File]::WriteAllText((Join-Path $root $htmlPath), $html, [System.Text.UTF8Encoding]::new($false))
-Write-Output "  index.html -> liens + changelog $tag"
+Write-Output "  index.html -> liens + changelog idempotent $tag"
 
 # ---------------------------------------------------------------- deploy
 Write-Output "[9/9] Deploiement Firebase..."

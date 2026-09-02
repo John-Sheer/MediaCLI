@@ -20,6 +20,7 @@ const initialState = {
   currentSong: null,
   streamUrl: null,
   isLocal: false,
+  resumeTime: 0,
   playlist: [],
   shuffle: false,
   repeatMode: "off",
@@ -56,6 +57,19 @@ function loadPlaylists() {
 }
 function persistPlaylists(p) {
   try { localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(p)); } catch {}
+}
+
+// Dernière lecture mémorisée (sauvegardée toutes les ~3s) : restaurée au
+// démarrage pour garder la section « En cours » visible (et reprendre la
+// lecture de la chanson) après fermeture/réouverture de l'application.
+function loadResume() {
+  try {
+    const raw = localStorage.getItem("mediacli-resume");
+    if (!raw) return null;
+    const r = JSON.parse(raw);
+    if (r && r.song && r.url) return r;
+  } catch {}
+  return null;
 }
 
 function cycleRepeat(mode) {
@@ -144,6 +158,9 @@ function reducer(state, action) {
         currentSong: action.song,
         playlist: action.playlist ?? state.playlist,
         streamUrl: `${api.base}/${state.torActive ? "stream-tor" : "stream"}?id=${encodeURIComponent(action.song.id)}`,
+        shuffle: action.shuffle !== undefined ? action.shuffle : state.shuffle,
+        repeatMode: action.repeatMode !== undefined ? action.repeatMode : state.repeatMode,
+        resumeTime: 0,
       };
 
     case "PLAY_LOCAL":
@@ -153,7 +170,31 @@ function reducer(state, action) {
         currentSong: action.song,
         playlist: action.playlist ?? state.playlist,
         streamUrl: `${api.base}/local?path=${encodeURIComponent(action.path)}`,
+        shuffle: action.shuffle !== undefined ? action.shuffle : state.shuffle,
+        repeatMode: action.repeatMode !== undefined ? action.repeatMode : state.repeatMode,
+        resumeTime: 0,
       };
+
+    // Reprend la lecture d'une chanson après retour dans un onglet (Streaming),
+    // SANS changer l'onglet : la chanson reste affichée dans la vue active.
+    // Un nonce (_r) force le lecteur à recharger/monter la source même s'il
+    // s'agit de la même chanson, pour garantir la reprise de la lecture.
+    case "STREAM_PLAY": {
+      const base = action.local
+        ? `${api.base}/local?path=${encodeURIComponent(action.path || action.song.path)}`
+        : `${api.base}/${state.torActive ? "stream-tor" : "stream"}?id=${encodeURIComponent(action.song.id)}`;
+      const nonce = base.includes("?") ? "&" : "?";
+      return {
+        ...state,
+        currentSong: action.song,
+        isLocal: !!action.local,
+        streamUrl: `${base}${nonce}_r=${Date.now()}`,
+        resumeTime: Number.isFinite(action.resumeTime) ? action.resumeTime : 0,
+        playlist: action.playlist ?? state.playlist,
+        shuffle: action.shuffle !== undefined ? action.shuffle : state.shuffle,
+        repeatMode: action.repeatMode !== undefined ? action.repeatMode : state.repeatMode,
+      };
+    }
 
     case "PLAY_AT": {
       const item = state.playlist[action.index];
@@ -165,6 +206,7 @@ function reducer(state, action) {
           isLocal: true,
           currentSong: { id: path, title: item.title || item.name, channel: "Local", thumbnail: null, duration: 0 },
           streamUrl: `${api.base}/local?path=${encodeURIComponent(path)}`,
+          resumeTime: 0,
         };
       }
       return {
@@ -172,6 +214,7 @@ function reducer(state, action) {
         isLocal: false,
         currentSong: item,
         streamUrl: `${api.base}/${state.torActive ? "stream-tor" : "stream"}?id=${encodeURIComponent(item.id)}`,
+        resumeTime: 0,
       };
     }
 
@@ -302,7 +345,18 @@ function reducer(state, action) {
 const StoreContext = createContext(null);
 
 export function StoreProvider({ children }) {
-  const [state, dispatch] = useReducer(reducer, initialState, (init) => ({ ...init, playlists: loadPlaylists() }));
+  const [state, dispatch] = useReducer(reducer, initialState, (init) => {
+    const resumed = loadResume();
+    const extra = resumed
+      ? {
+          currentSong: resumed.song,
+          streamUrl: resumed.url,
+          isLocal: isLocalTrack(resumed.song),
+          resumeTime: Number.isFinite(resumed.time) ? resumed.time : 0,
+        }
+      : {};
+    return { ...init, playlists: loadPlaylists(), ...extra };
+  });
 
   // progression des téléchargements (polling)
   useEffect(() => {
