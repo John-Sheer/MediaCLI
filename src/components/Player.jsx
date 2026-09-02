@@ -350,6 +350,22 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
   const autoOpenRef = useRef(false);
   const collapseTimerRef = useRef(null);
 
+  // Type de la piste : 'audio' (toujours en pillule), 'video' (lecteur autorisé),
+  // 'stream' (inconnu à la sélection, décidé par les métadonnées -> hasVideo).
+  const resolveTrackKind = (song, url) => {
+    const isLocal = url?.includes("/local?path=");
+    const title = song?.title || "";
+    const path = song?.path || "";
+    const urlPath = isLocal ? decodeURIComponent((url.split("path=")[1] || "").split("&")[0]) : "";
+    if (AUDIO_ONLY_RE.test(title) || AUDIO_ONLY_RE.test(path) || AUDIO_ONLY_RE.test(urlPath)) return "audio";
+    const isVideoFile = VIDEO_RE.test(title) || VIDEO_RE.test(path) || VIDEO_RE.test(urlPath);
+    if (isLocal && !isVideoFile) return "audio";
+    if (isLocal && isVideoFile) return "video";
+    return "stream";
+  };
+  const trackKind = resolveTrackKind(currentSong, streamUrl);
+  const isAudioLike = trackKind === "audio" || (trackKind === "stream" && !hasVideo);
+
   useEffect(() => {
     setHasVideo(false);
     canFsRef.current = false;
@@ -357,20 +373,15 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     autoOpenRef.current = false;
     if (!currentSong || !streamUrl) return;
 
-    const isLocal = streamUrl.includes("/local?path=");
-    const title = currentSong.title || "";
-    const path = currentSong.path || "";
-    const urlPath = isLocal ? decodeURIComponent((streamUrl.split("path=")[1] || "").split("&")[0]) : "";
-    const isAudioFile = AUDIO_ONLY_RE.test(title) || AUDIO_ONLY_RE.test(path) || AUDIO_ONLY_RE.test(urlPath);
-    const isVideoFile = VIDEO_RE.test(title) || VIDEO_RE.test(path) || VIDEO_RE.test(urlPath);
+    const kind = resolveTrackKind(currentSong, streamUrl);
 
-    if (isAudioFile || (isLocal && !isVideoFile)) {
-      // audio local : pillule seule, jamais le lecteur complet.
+    if (kind === "audio") {
+      // audio : pillule seule, jamais le lecteur complet.
       setHidden(true);
       return;
     }
 
-    if (isLocal && isVideoFile) {
+    if (kind === "video") {
       // video locale : ouvre le lecteur puis le replie en pillule (on montre qu'on ecoute une video).
       autoOpenRef.current = true;
       setHidden(false);
@@ -382,10 +393,10 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       return () => clearTimeout(collapseTimerRef.current);
     }
 
-    // Source non locale (streaming / video internet) : on ne connait pas encore
-    // le type. Ne JAMAIS ouvrir le lecteur par avance, sinon un flux audio
-    // affiche un flash de lecteur normal. La decision est prise dans
-    // onLoadedMetadata via e.target.videoWidth.
+    // Source non locale (kind === "stream") : on ne connait pas encore le type.
+    // Ne JAMAIS ouvrir le lecteur par avance, sinon un flux audio affiche un
+    // flash de lecteur normal. La decision est prise dans onLoadedMetadata via
+    // e.target.videoWidth.
     autoOpenRef.current = true;
     return () => clearTimeout(collapseTimerRef.current);
   }, [currentSong?.id, streamUrl]);
@@ -821,10 +832,17 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     };
     const backAfter = (ms, transition) => setTimeout(() => back(transition), ms);
     const threshold = dy < 0 ? THRESHOLD_UP : THRESHOLD_DOWN;
-    // Gesture verticale (haut = déplier le lecteur, bas = play/pause).
+    // Gesture verticale (haut = déplier le lecteur [jamais pour un audio], bas = play/pause).
     if (sw.moved && Math.abs(dy) > threshold && Math.abs(dy) > Math.abs(dx)) {
       pillSuppressClick.current = true;
       if (dy < 0) {
+        if (isAudioLike) {
+          // AUDIO : jamais de lecteur complet. On ignore le swipe haut et on
+          // revient simplement en position neutre.
+          back();
+          setTimeout(() => { pillSuppressClick.current = false; }, 400);
+          return;
+        }
         autoOpenRef.current = false;
         clearTimeout(collapseTimerRef.current);
         setPillReveal(-46);
