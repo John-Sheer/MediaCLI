@@ -1,15 +1,15 @@
-﻿{
+{
+    "version":  "0.1.26",
+    "notes":  "Mise a jour MediaCLI 0.1.26 (Windows + Android).",
+    "pub_date":  "2026-09-02T17:16:04Z",
     "platforms":  {
-                      "windows-x86_64":  {
-                                             "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.26/MediaCLI-Setup.exe",
-                                             "signature":  "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUhOcFoyNWhkSFZ5WlNCbWNtOXRJSFJoZFhKcElITmxZM0psZENCclpYa0tVbFZSVDBObWJFbFZWWEIxYVU5aGVrWlBOVU5uWVhFemJrTXZRVEJRTTJWNE9GWkVTbTVLYUdST2JHVnRWalJqU0VwQll6QjViekl4TTI1VGN6aFNXSFZSY2k5TlRXeFZZMUZRWlZSS1VHc3ZOVk5NWVRKYVowdElSa2RYZFdSblRWRmpQUXAwY25WemRHVmtJR052YlcxbGJuUTZJSFJwYldWemRHRnRjRG94TnpnNE16WTRORFUxQ1dacGJHVTZUV1ZrYVdGRFRFbGZNQzR4TGpJMlgzZzJOQzF6WlhSMWNDNWxlR1VLSzJaMVZsTTVNakU1TUVOWFRrdDVUa2s0VGxGclVYVlVlREJ4VVRWVmVFUlJkazFtZUU1UWRESmlZalZGT0d4WmNqaHNXSFpNUVZOTk1TOU5SbTl1Wld3eU5EVk9XRmhDUjBWcVYyNXZSbXREV1ZSUFFrRTlQUW89"
-                                         },
                       "android-arm64":  {
                                             "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.26/MediaCLI.apk",
                                             "signature":  ""
-                                        }
-                  },
-    "pub_date":  "2026-09-02T17:00:55Z",
-    "version":  "0.1.26",
-    "notes":  "Mises Ã  jour depuis l\u0027application (Windows + Android), stabilitÃ© et correctifs."
+                                        },
+                      "windows-x86_64":  {
+                                             "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.26/MediaCLI-Setup.exe",
+                                             "signature":  "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUhOcFoyNWhkSFZ5WlNCbWNtOXRJSFJoZFhKcElITmxZM0psZENCclpYa0tVbFZSVDBObWJFbFZWWEIxYVVWYVRGaEJPSE5SYTNBM0szbDViRk5pZUdoaE1GWm9Va1JWY2pCc1ZURllLMHBpWjJwRWVXazFTMk51UW5GeGVITkZOSEVyVmk5d2QxZHJNamR6TTJsSGEydG9UMlpOUjJGRmRtMWllRTlCUkVOME0wRTRQUXAwY25WemRHVmtJR052YlcxbGJuUTZJSFJwYldWemRHRnRjRG94TnpnM09UWTFOemswQ1dacGJHVTZUV1ZrYVdGRFRFbGZNQzR4TGpFMFgzZzJOQzF6WlhSMWNDNWxlR1VLT0hSaU5sSnVSVVZKVW1oVU0wcHdWU3RtTmtwamExUmthbVZKTWpkWmExWkJNbWN5TVdkeU5UVnRRVmxyWlRscVlpczVabHBVTlRKT1lXSjFiVTlHVVRCeWVWaEJVMnRFVjNZNFduRlFielpHYmxVM1FYYzlQUW89"
+                                         }
+                  }
 }
