@@ -259,6 +259,11 @@ export function StreamingView({ state, onSearch, onLoadMore, onPlay, onDownload,
 
   const scrollToSearch = () => {
     const el = searchRef.current;
+    // Rendre la barre de recherche visible avant de scroller/focuser (sinon un
+    // élément hidden ne peut pas être focusé et le curseur ne clignote pas).
+    if (el) {
+      el.classList.remove("hidden");
+    }
     let node = el;
     while (node && node !== document.documentElement) {
       const s = getComputedStyle(node).overflowY;

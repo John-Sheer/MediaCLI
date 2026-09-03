@@ -10,6 +10,7 @@ import { VpnModal } from "./components/VpnModal.jsx";
 import UpdateManager from "./components/UpdateManager.jsx";
 import { TutorialManager } from "./components/Tutorial.jsx";
 import Player from "./components/Player.jsx";
+import ScrubOverlay from "./components/ScrubOverlay.jsx";
 import QueuePanel from "./components/QueuePanel.jsx";
 import Settings from "./components/Settings.jsx";
 import { Logo } from "./components/Logo.jsx";
@@ -380,6 +381,8 @@ export default function App() {
         onDownload={actions.download}
         revealSignal={playerReveal}
       />
+
+      <ScrubOverlay />
 
       <QueuePanel
         visible={showQueue}

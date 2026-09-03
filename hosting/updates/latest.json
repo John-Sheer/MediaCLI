@@ -1,15 +1,15 @@
 ﻿{
     "platforms":  {
                       "windows-x86_64":  {
-                                             "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.27/MediaCLI-Setup.exe",
-                                             "signature":  "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUhOcFoyNWhkSFZ5WlNCbWNtOXRJSFJoZFhKcElITmxZM0psZENCclpYa0tVbFZSVDBObWJFbFZWWEIxYVVWQ04xTjVORFpFYXpocU5YSTBkekk0TmpCUE4zVnhZVGxRUlVnNGVVaHJORGhPWWpsa1Mza3dZMncwTjFWT1oyTkhiVzQwT0hRelRrMDVVbkJQVDNKWmJrRlBTMWhGUzJWc1Fub3JhRkJzU0VaWmNsRnJQUXAwY25WemRHVmtJR052YlcxbGJuUTZJSFJwYldWemRHRnRjRG94TnpnNE5ETXpOemd5Q1dacGJHVTZUV1ZrYVdGRFRFbGZNQzR4TGpJM1gzZzJOQzF6WlhSMWNDNWxlR1VLWmtVdllWcHpXWEJsZUhKNE5VcHFNR05HUzJacVUyOVVTakZGSzJ3dkswUnNhVlYxZFRsclRWaHVNMDFUVDBoU1RGaFdkM2d3V1d0blVubEViRzlLU3k5MVRFazBaV2cxVUdGaFRYTjJWMFZDTTBoc1JHYzlQUW89"
+                                             "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.28/MediaCLI-Setup.exe",
+                                             "signature":  "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUhOcFoyNWhkSFZ5WlNCbWNtOXRJSFJoZFhKcElITmxZM0psZENCclpYa0tVbFZSVDBObWJFbFZWWEIxYVVKbmJtZEliRUo2Y1VWdk9URXdXUzg1WW1OTmRHVldPWGRoWWtZd2VGSkNVMmN5WW1OV1YyTTJVVUZzT0haemVUSXpOMWNyWjB0WlVVRjNOQ3NyVFVaYVdGZFNZVkp1VW5Sc056VjRlWHBwWVVwMFJXZDNQUXAwY25WemRHVmtJR052YlcxbGJuUTZJSFJwYldWemRHRnRjRG94TnpnNE5EVTFORGd6Q1dacGJHVTZUV1ZrYVdGRFRFbGZNQzR4TGpJNFgzZzJOQzF6WlhSMWNDNWxlR1VLUWtoTmIxaHdSRE5WV0hGUU1rSklWM2wzYUVaWlExSkhOMkYwY1VsNlprVkNNbmwyYlhJcmJFRjZaM2gwYVRSd01VOVdOMWhMVEM5VGJGUkJVME5WZEU1QmRXeENMMGQzTUVSR1FWVTJhWFZYUlhselFWRTlQUW89"
                                          },
                       "android-arm64":  {
-                                            "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.27/MediaCLI.apk",
+                                            "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.28/MediaCLI.apk",
                                             "signature":  ""
                                         }
                   },
-    "pub_date":  "2026-09-03T11:09:42Z",
-    "version":  "0.1.27",
+    "pub_date":  "2026-09-03T17:11:23Z",
+    "version":  "0.1.28",
     "notes":  "Mises Ã  jour depuis l\u0027application (Windows + Android), stabilitÃ© et correctifs."
 }

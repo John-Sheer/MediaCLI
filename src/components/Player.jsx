@@ -134,17 +134,17 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
   const volumeTimerRef = useRef(null);
   const loadTimerRef = useRef(null);
   const resumePosRef = useRef(0);
-  // Position de reprise au démarrage : consommée une seule fois, au premier
-  // chargement de média (sinon un NEXT repositionnerait la nouvelle piste).
+  // Position de reprise au dÃ©marrage : consommÃ©e une seule fois, au premier
+  // chargement de mÃ©dia (sinon un NEXT repositionnerait la nouvelle piste).
   const resumeStartRef = useRef(Number.isFinite(resumeTime) && resumeTime > 0 ? resumeTime : 0);
   const pausePosRef = useRef(0);
   const userPauseRef = useRef(false);
   const currentSongRef = useRef(currentSong);
   useEffect(() => { currentSongRef.current = currentSong; }, [currentSong]);
 
-  // Remonte l'état de lecture au store (pour l'afficheur « En cours » des vues).
-  // Le callback est gardé dans une ref pour ne pas re-déclencher la sync à
-  // chaque render (évite toute boucle avec le re-render du store).
+  // Remonte l'Ã©tat de lecture au store (pour l'afficheur Â« En cours Â» des vues).
+  // Le callback est gardÃ© dans une ref pour ne pas re-dÃ©clencher la sync Ã 
+  // chaque render (Ã©vite toute boucle avec le re-render du store).
   const onPlayingChangeRef = useRef(onPlayingChange);
   useEffect(() => { onPlayingChangeRef.current = onPlayingChange; }, [onPlayingChange]);
   const lastNotifiedPlayingRef = useRef(null);
@@ -190,15 +190,16 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
   const [customSleep, setCustomSleep] = useState("");
   const [showControls, setShowControls] = useState(true);
   const controlsTimer = useRef(null);
-  const showControlsTempRef = useRef(null); // référence stable pour éviter le TDZ dans swipeHandlers
+  const showControlsTempRef = useRef(null); // rÃ©fÃ©rence stable pour Ã©viter le TDZ dans swipeHandlers
   const [swipeFeedback, setSwipeFeedback] = useState(null);
   const swipeFeedbackTimer = useRef(null);
-  const [pillScrub, setPillScrub] = useState(null);
   const pillRef = useRef(null);
   const pillSwipe = useRef(null);
   const pillSuppressClick = useRef(false);
   const pillSeenOnce = useRef(false);
   const lastNavAtRef = useRef(0);
+  const playerSwipe = useRef(null);
+  const scrubIntervalRef = useRef(null);
   const EQ_PRESETS = {
     "Flat":      { bass: 0,   mid: 0,   treble: 0 },
     "Rock":      { bass: 5,   mid: -1,  treble: 4 },
@@ -218,16 +219,16 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     try {
       const el = videoRef.current;
       if (!el || audioGraphBuiltRef.current) return;
-      // Sur Android WebView, router l'élément via MediaElementSource fait perdre
-      // le son après une pause (bug Chromium non corrigé). On joue directement :
-      // pause/reprise d'un élément <video> classique est fiable sur Android.
+      // Sur Android WebView, router l'Ã©lÃ©ment via MediaElementSource fait perdre
+      // le son aprÃ¨s une pause (bug Chromium non corrigÃ©). On joue directement :
+      // pause/reprise d'un Ã©lÃ©ment <video> classique est fiable sur Android.
       if (IS_ANDROID) return;
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) return;
       // Un SEUL AudioContext pour toute l'app : sur Android WebView, un contexte
-      // créé hors geste utilisateur démarre "suspended" et avale le son (muet).
-      // On réutilise le contexte existant (déjà running) et on n'attache qu'un
-      // nouveau MediaElementSource sur l'élément (neuf après remount).
+      // crÃ©Ã© hors geste utilisateur dÃ©marre "suspended" et avale le son (muet).
+      // On rÃ©utilise le contexte existant (dÃ©jÃ  running) et on n'attache qu'un
+      // nouveau MediaElementSource sur l'Ã©lÃ©ment (neuf aprÃ¨s remount).
       const ctx = audioCtxRef.current || new Ctx();
       audioCtxRef.current = ctx;
       const source = ctx.createMediaElementSource(el);
@@ -312,7 +313,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
         setSleepMinutes(0);
         sleepEndRef.current = 0;
         if (videoRef.current && !videoRef.current.paused) {
-          // VRAIE pause (la vidéo se fige) à l'arrivée du minuteur sommeil.
+          // VRAIE pause (la vidÃ©o se fige) Ã  l'arrivÃ©e du minuteur sommeil.
           userPauseRef.current = true;
           pausePosRef.current = videoRef.current.currentTime || 0;
           videoRef.current.pause();
@@ -352,7 +353,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       setDuration(0);
       clearLoadTimer();
       setPlaying(false);
-      loadTimerRef.current = setTimeout(() => setStreamError("Le flux met trop de temps à répondre."), 90000);
+      loadTimerRef.current = setTimeout(() => setStreamError("Le flux met trop de temps Ã  rÃ©pondre."), 90000);
       return () => clearLoadTimer();
     }
     if (!streamUrl && videoRef.current) {
@@ -368,16 +369,16 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     }
   }, [streamUrl]);
 
-  // Comportement lecture : une VIDEO ouvre le lecteur normal puis se réduit en
-  // pillule (pour montrer qu'on écoute une video) ; un AUDIO reste en pillule
+  // Comportement lecture : une VIDEO ouvre le lecteur normal puis se rÃ©duit en
+  // pillule (pour montrer qu'on Ã©coute une video) ; un AUDIO reste en pillule
   // seule, sans jamais ouvrir le lecteur complet.
   const AUDIO_ONLY_RE = /\.(mp3|m4a|flac|ogg|oga|opus|wav|aac)$/i;
   const VIDEO_RE = /\.(mp4|mkv|mov|webm)$/i;
   const autoOpenRef = useRef(false);
   const collapseTimerRef = useRef(null);
 
-  // Type de la piste : 'audio' (toujours en pillule), 'video' (lecteur autorisé),
-  // 'stream' (inconnu à la sélection, décidé par les métadonnées -> hasVideo).
+  // Type de la piste : 'audio' (toujours en pillule), 'video' (lecteur autorisÃ©),
+  // 'stream' (inconnu Ã  la sÃ©lection, dÃ©cidÃ© par les mÃ©tadonnÃ©es -> hasVideo).
   const resolveTrackKind = (song, url) => {
     const isLocal = url?.includes("/local?path=");
     const title = song?.title || "";
@@ -397,7 +398,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     canFsRef.current = false;
     clearTimeout(collapseTimerRef.current);
     autoOpenRef.current = false;
-    // Position de reprise du morceau concerné : STREAM_PLAY fournit resumeTime,
+    // Position de reprise du morceau concernÃ© : STREAM_PLAY fournit resumeTime,
     // les autres lectures (PLAY/PLAY_AT) fournissent 0.
     resumeStartRef.current = resumeTime > 0 ? resumeTime : 0;
     if (!currentSong || !streamUrl) return;
@@ -406,7 +407,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
 
     if (kind === "audio") {
       // audio : pilule seule, JAMAIS le lecteur complet. On force le repli
-      // pour annuler toute ouverture antérieure (video -> audio).
+      // pour annuler toute ouverture antÃ©rieure (video -> audio).
       setHidden(true);
       setFullscreen(false);
       return;
@@ -429,12 +430,12 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     return () => clearTimeout(collapseTimerRef.current);
   }, [currentSong?.id, streamUrl]);
 
-  // Stream vidéo : les dimensions réelles ne sont connues qu'une fois le flux
-  // chargé. L'auto-ouverture est one-shot : armée par l'effet de piste
-  // (autoOpenRef), consommée dès qu'on ouvre le lecteur pour ce morceau.
-  // Ici, vérification différée qui OUVRE seulement (jamais elle ne replie ni ne
-  // verrouille) : couvre le cas où onLoadedMetadata d'un nouvel élément
-  // (NEXT/PREVIOUS sur la pillule) ne s'est pas re-déclenché.
+  // Stream vidÃ©o : les dimensions rÃ©elles ne sont connues qu'une fois le flux
+  // chargÃ©. L'auto-ouverture est one-shot : armÃ©e par l'effet de piste
+  // (autoOpenRef), consommÃ©e dÃ¨s qu'on ouvre le lecteur pour ce morceau.
+  // Ici, vÃ©rification diffÃ©rÃ©e qui OUVRE seulement (jamais elle ne replie ni ne
+  // verrouille) : couvre le cas oÃ¹ onLoadedMetadata d'un nouvel Ã©lÃ©ment
+  // (NEXT/PREVIOUS sur la pillule) ne s'est pas re-dÃ©clenchÃ©.
   const hiddenRef = useRef(hidden);
   useEffect(() => { hiddenRef.current = hidden; }, [hidden]);
   useEffect(() => {
@@ -455,6 +456,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
 
   useEffect(() => {
     return () => {
+      if (scrubIntervalRef.current) { clearInterval(scrubIntervalRef.current); scrubIntervalRef.current = null; }
       userPauseRef.current = true;
       if (videoRef.current) {
         videoRef.current.pause();
@@ -478,9 +480,9 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, []);
 
-  // Android WebView : rejoue un court échantillon audio HTML5 silencieux pour
-  // forcer la ré-acquisition du focus audio (sinon l'audio ressort muet après
-  // une pause). Workaround officiel recommandé pour WebView + WebAudio.
+  // Android WebView : rejoue un court Ã©chantillon audio HTML5 silencieux pour
+  // forcer la rÃ©-acquisition du focus audio (sinon l'audio ressort muet aprÃ¨s
+  // une pause). Workaround officiel recommandÃ© pour WebView + WebAudio.
   const kickAudioFocus = () => {
     try {
       const el = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAADAAAAAAA==");
@@ -492,6 +494,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
   };
 
   const togglePlay = () => {
+    try { window.dispatchEvent(new CustomEvent("media-gesture", { detail: { kind: playing ? "pause" : "play" } })); } catch {}
     if (!videoRef.current) return;
     if (streamError) {
       setStreamError(null);
@@ -505,7 +508,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       return;
     }
     if (playing) {
-      // VRAIE pause : la vidéo se fige, le son s'arrête avec elle.
+      // VRAIE pause : la vidÃ©o se fige, le son s'arrÃªte avec elle.
       const v = videoRef.current;
       userPauseRef.current = true;
       pausePosRef.current = v.currentTime || 0;
@@ -520,7 +523,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     kickAudioFocus();
     userPauseRef.current = false;
     if (v.paused || v.ended || !v.src) {
-      // Tentative 1 : simple play() — fiable sur la plupart des appareils,
+      // Tentative 1 : simple play() â€” fiable sur la plupart des appareils,
       // ne provoque pas d'interruption/rechargement du flux.
       v.muted = false;
       const promise = v.play();
@@ -541,7 +544,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       }
       return;
     }
-    // Cas rare : l'élément est encore en lecture → simple dé-mute.
+    // Cas rare : l'Ã©lÃ©ment est encore en lecture â†’ simple dÃ©-mute.
     v.muted = false;
     setVideoMuted(false);
     setPlaying(true);
@@ -588,7 +591,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     },
     onSwipeDown: () => {
       // Geste contraire de la pillule (haut = ouvrir) : glisser le lecteur
-      // plein écran vers le bas le replie en pillule.
+      // plein Ã©cran vers le bas le replie en pillule.
       if (!videoRef.current?.src) return;
       clearTimeout(collapseTimerRef.current);
       setHidden(true);
@@ -652,8 +655,8 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
   useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => { onEndedRef.current = onEnded; }, [onEnded]);
 
-  // Écoute les commandes globales de lecture venant des vues (ex : l'afficheur
-  // « En cours » de la vue Streaming veut basculer lecture/pause).
+  // Ã‰coute les commandes globales de lecture venant des vues (ex : l'afficheur
+  // Â« En cours Â» de la vue Streaming veut basculer lecture/pause).
   useEffect(() => {
     const onToggle = (e) => {
       e?.preventDefault?.();
@@ -828,14 +831,47 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     }
   }, []);
 
-  // Déplacement du lecteur en posant le doigt n'importe où sur sa surface,
-  // sans détourner les appuis sur les contrôles (boutons, sliders, champs…).
+  // DÃ©placement du lecteur en posant le doigt n'importe oÃ¹ sur sa surface,
+  // sans dÃ©tourner les appuis sur les contrÃ´les (boutons, sliders, champsâ€¦).
   const playerDragStart = useCallback((e) => {
     const el = e.target;
     if (el && el.closest && el.closest("button, input, select, a, textarea, [role='button'], [role='slider'], [role='tab']")) return;
     if (e.touches) e.preventDefault();
     handleDragStart(e);
   }, [handleDragStart]);
+
+  // Swipe bas sur le lecteur normal (non-fullscreen) : on le replie en pillule.
+  // DISTINGUE du drag souris (plein écran flottant) — ici on gère le toucher.
+  const playerTouchMove = (e) => {
+    const sw = playerSwipe.current;
+    if (!sw) return;
+    const t = e.touches[0];
+    sw.dy = t.clientY - sw.startY;
+    sw.dx = t.clientX - sw.startX;
+    // Dès que le geste s'affirme comme un swipe descendant net et dominant
+    // (repli en pillule), on bloque le scroll pour que le geste soit capté.
+    // Sinon (toucher/glisser ailleurs) on laisse le scroll natif passer.
+    if (!sw.isVertical && sw.dy > 24 && Math.abs(sw.dy) > Math.abs(sw.dx)) {
+      sw.isVertical = true;
+      if (e.cancelable) e.preventDefault();
+    }
+  };
+  const playerTouchStart = (e) => {
+    if (e.target && e.target.closest && e.target.closest("button, input, select, a, [role='slider']")) return;
+    const t = e.touches ? e.touches[0] : e;
+    playerSwipe.current = { startY: t.clientY, startX: t.clientX, dy: 0, dx: 0, isVertical: false };
+  };
+  const playerTouchEnd = () => {
+    const sw = playerSwipe.current;
+    playerSwipe.current = null;
+    if (!sw) return;
+    // Geste descendant marqué et dominant = replier en pillule.
+    if (sw.dy > 70 && Math.abs(sw.dy) > Math.abs(sw.dx)) {
+      clearTimeout(collapseTimerRef.current);
+      setHidden(true);
+      setFullscreen(false);
+    }
+  };
 
   const setPillTransform = (dx, transition) => {
     const el = pillRef.current;
@@ -855,52 +891,65 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
 
   const pillTouchStart = (e) => {
     const t = e.touches ? e.touches[0] : e;
-    pillSwipe.current = { startX: t.clientX, startY: t.clientY, dx: 0, dy: 0, moved: false, startTime: Date.now(), scrub: false, scrubBaseProgress: progress };
+    pillSwipe.current = { startX: t.clientX, startY: t.clientY, dx: 0, dy: 0, moved: false, startTime: Date.now(), scrub: false, scrubBaseProgress: progress, axis: null, scrubbed: false };
   };
 
   const pillTouchMove = (e) => {
     const sw = pillSwipe.current;
     if (!sw) return;
     if (e.touches) e.preventDefault();
-    const t = e.touches[0];
+    const t = e.touches ? e.touches[0] : e;
     sw.dx = t.clientX - sw.startX;
     sw.dy = t.clientY - sw.startY;
     if (Math.abs(sw.dx) > 4 || Math.abs(sw.dy) > 4) sw.moved = true;
-    // Axe dominant : horizontal = pilule qui suit en X, vertical = suit en Y.
-    if (Math.abs(sw.dy) > Math.abs(sw.dx)) {
+    // Verrouillage d'axe : on décide UNE fois (au premier grand mouvement)
+    // si le geste est horizontal (scrub / next-prev) ou vertical (déplier /
+    // play-pause). Évite que le moindre tremblement vertical casse le scrub
+    // au tactile Android.
+    if (!sw.axis && (Math.abs(sw.dx) > 14 || Math.abs(sw.dy) > 14)) {
+      sw.axis = Math.abs(sw.dx) >= Math.abs(sw.dy) ? 'x' : 'y';
+    }
+    if (sw.axis === 'y') {
       const el = pillRef.current;
       if (el) {
         el.style.transition = 'none';
         el.style.willChange = 'transform';
         el.style.transform = `translate(-50%, ${sw.dy}px)`;
       }
-    } else {
-      // Si on maintient le doigt assez longtemps sur un geste horizontal
-      // dominant, on passe en mode « scrub » : la position dans la chanson
-      // avance/reculle en suivant la distance du glissement au lieu de
-      // déclencher une chanson précédente/suivante.
-      const elapsed = Date.now() - sw.startTime;
-      if (elapsed > 200 && Math.abs(sw.dx) > 12 && duration > 0) {
-        sw.scrub = true;
-        const ratio = Math.max(1, window.innerWidth) / 2.2;
-        const nextProgress = Math.min(duration, Math.max(0, sw.scrubBaseProgress + (sw.dx / ratio) * duration));
-        handleSeekRef.current({ target: { value: nextProgress } });
-        setPillTransform(sw.dx, 'none');
-        setPillScrub({
-          delta: nextProgress - sw.scrubBaseProgress,
-          position: nextProgress,
-          duration: duration,
-        });
-      } else {
-        setPillTransform(sw.dx, 'none');
-      }
+      return;
+    }
+    // Geste horizontal verrouillé : la pilule suit en X.
+    setPillTransform(sw.dx, 'none');
+    // Distinction swipe court / long :
+    //  - Balayage rapide (relâché avant 1000ms) avec dx > seuil = NEXT/PREV.
+    //  - Geste maintenu long (maintenu >= 1000ms) = avancement rapide (scrub)
+    //    avec affichage des infos de position à l'écran.
+    const elapsed = Date.now() - sw.startTime;
+    if (elapsed >= 1000 && !sw.scrub && duration > 0) {
+      // Démarrage de l'avancement automatique. Vitesse de base = 3x la lecture,
+      // qui passe à 5x si l'on maintient le doigt 5 secondes ou plus.
+      sw.scrub = true;
+      sw.dir = sw.dx >= 0 ? 1 : -1;
+      sw.pos = progress;
+      sw.scrubbed = true;
+      sw.scrubStart = Date.now();
+      const push = () => {
+        const held = (Date.now() - sw.scrubStart) / 1000;
+        const speed = held >= 5 ? 5 : 3;
+        sw.pos = Math.min(duration, Math.max(0, sw.pos + speed * 0.1 * sw.dir));
+        handleSeekRef.current({ target: { value: sw.pos } });
+        try { window.dispatchEvent(new CustomEvent("media-scrub", { detail: { delta: sw.pos - progress, position: sw.pos, duration } })); } catch {}
+      };
+      push();
+      if (scrubIntervalRef.current) clearInterval(scrubIntervalRef.current);
+      scrubIntervalRef.current = setInterval(push, 100);
     }
   };
 
   const pillTouchEnd = (e) => {
-    // Empêche la synthèse d'un click après le touchend : sans cela, sur
-    // Android WebView, un tap qui démonte la pillule (ouverture vidéo) fait
-    // retomber le click sur l'élément désormais situé en dessous (la piste).
+    // EmpÃªche la synthÃ¨se d'un click aprÃ¨s le touchend : sans cela, sur
+    // Android WebView, un tap qui dÃ©monte la pillule (ouverture vidÃ©o) fait
+    // retomber le click sur l'Ã©lÃ©ment dÃ©sormais situÃ© en dessous (la piste).
     if (e && typeof e.preventDefault === "function") e.preventDefault();
     const sw = pillSwipe.current;
     pillSwipe.current = null;
@@ -918,10 +967,10 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     };
     const backAfter = (ms, transition) => setTimeout(() => back(transition), ms);
     const threshold = dy < 0 ? THRESHOLD_UP : THRESHOLD_DOWN;
-    // Tap simple sur la pillule : pour une vidéo, ouvrir le lecteur. Pour un
+    // Tap simple sur la pillule : pour une vidÃ©o, ouvrir le lecteur. Pour un
     // audio, ne JAMAIS ouvrir le lecteur normal : on reste en pilule. Le tap
-    // webview (Android) ne synthétise parfois pas le click après touchstart/
-    // touchend (touch-action:none), donc on gère directement ici.
+    // webview (Android) ne synthÃ©tise parfois pas le click aprÃ¨s touchstart/
+    // touchend (touch-action:none), donc on gÃ¨re directement ici.
     if (!sw.moved) {
       pillSuppressClick.current = true;
       setTimeout(() => { pillSuppressClick.current = false; }, 300);
@@ -936,8 +985,9 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       collapseTimerRef.current = setTimeout(() => setHidden(true), 1000);
       return;
     }
-    // Gesture verticale (haut = déplier le lecteur [jamais pour un audio], bas = play/pause).
-    if (sw.moved && Math.abs(dy) > threshold && Math.abs(dy) > Math.abs(dx)) {
+    // Gesture verticale (haut = dÃ©plier le lecteur [jamais pour un audio], bas = play/pause).
+    const isVertical = sw.axis === 'y' || (!sw.axis && Math.abs(dy) > Math.abs(dx));
+    if (sw.moved && isVertical && Math.abs(dy) > threshold) {
       pillSuppressClick.current = true;
       if (dy < 0) {
         if (isAudioLike) {
@@ -964,27 +1014,28 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       }
       return;
     }
-    // Mode scrub : on a fait défiler la position dans la chanson, on ne change
-    // ni de chanson ni d'état — on retourne juste la pilule en position neutre.
+    // Mode scrub : on a fait dÃ©filer la position dans la chanson, on ne change
+    // ni de chanson ni d'Ã©tat â€” on retourne juste la pilule en position neutre.
     if (sw.scrub) {
+      if (scrubIntervalRef.current) { clearInterval(scrubIntervalRef.current); scrubIntervalRef.current = null; }
       pillSuppressClick.current = true;
       setPillTransform(0, 'transform 0.25s cubic-bezier(0.22,1,0.36,1)');
       setTimeout(() => {
         pillSuppressClick.current = false;
-        setPillScrub(null);
       }, 450);
       return;
     }
-    const triggerNext = sw.moved && dx > THRESHOLD_UP;
-    const triggerPrev = sw.moved && dx < -THRESHOLD_UP;
+    const isHorizontal = sw.axis === 'x' || (!sw.axis && Math.abs(dx) > Math.abs(dy));
+    const triggerNext = isHorizontal && sw.moved && dx > THRESHOLD_UP;
+    const triggerPrev = isHorizontal && sw.moved && dx < -THRESHOLD_UP;
     if (!triggerNext && !triggerPrev) {
       back();
       return;
     }
     const now = Date.now();
     if (now - lastNavAtRef.current < 250) {
-      // Anti double-déclenchement : deux gestes next/prev très rapprochés
-      // (doigt qui tremble ou swipe en rafale) sont ignorés.
+      // Anti double-dÃ©clenchement : deux gestes next/prev trÃ¨s rapprochÃ©s
+      // (doigt qui tremble ou swipe en rafale) sont ignorÃ©s.
       back();
       return;
     }
@@ -995,8 +1046,14 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     setTimeout(() => setPillTransform(0, 'transform 0.25s cubic-bezier(0.22,1,0.36,1)'), 170);
     setTimeout(() => { pillSuppressClick.current = false; }, 400);
     setTimeout(() => {
-      if (triggerNext && onNextRef.current) onNextRef.current();
-      if (triggerPrev && onPreviousRef.current) onPreviousRef.current();
+      if (triggerNext && onNextRef.current) {
+        try { window.dispatchEvent(new CustomEvent("media-gesture", { detail: { kind: "next" } })); } catch {}
+        onNextRef.current();
+      }
+      if (triggerPrev && onPreviousRef.current) {
+        try { window.dispatchEvent(new CustomEvent("media-gesture", { detail: { kind: "previous" } })); } catch {}
+        onPreviousRef.current();
+      }
     }, 170);
   };
 
@@ -1007,7 +1064,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       if (playing) setShowControls(false);
     }, 3000);
   }, [playing]);
-  // Mettre à jour la référence stable à chaque render
+  // Mettre Ã  jour la rÃ©fÃ©rence stable Ã  chaque render
   showControlsTempRef.current = showControlsTemp;
 
   useEffect(() => {
@@ -1081,8 +1138,8 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     onFullscreenChange?.(fullscreen);
   }, [fullscreen, onFullscreenChange]);
 
-  // Arrière-plan : signale l'état de lecture réel au backend
-  // (boutons thumbbar + notification média).
+  // ArriÃ¨re-plan : signale l'Ã©tat de lecture rÃ©el au backend
+  // (boutons thumbbar + notification mÃ©dia).
   useEffect(() => {
     console.log("[bg] IS_ANDROID=" + IS_ANDROID + " UA=" + (navigator.userAgent || ""));
     const v = videoRef.current;
@@ -1100,7 +1157,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     }).catch(() => {});
   }, [playing, currentSong]);
 
-  // Notification média : mise à jour périodique de la position pour la
+  // Notification mÃ©dia : mise Ã  jour pÃ©riodique de la position pour la
   // barre de progression dans la notification Android.
   useEffect(() => {
     if (!IS_ANDROID || !playing) return;
@@ -1121,8 +1178,8 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     return () => clearInterval(id);
   }, [playing]);
 
-  // Thumbbar / notification média : actions provenant du système (clavier
-  // média, boutons de la notification du BackgroundService, etc.).
+  // Thumbbar / notification mÃ©dia : actions provenant du systÃ¨me (clavier
+  // mÃ©dia, boutons de la notification du BackgroundService, etc.).
   useEffect(() => {
     return onThumbbarAction((action) => {
       if (action === "toggle-play") togglePlayRef.current();
@@ -1138,7 +1195,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     if ('mediaSession' in navigator) {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: currentSong.title,
-        artist: currentSong.channel || 'MédiaCLI',
+        artist: currentSong.channel || 'MÃ©diaCLI',
         artwork: getThumb(currentSong.thumbnail)
           ? [{ src: thumbUrl(currentSong.thumbnail), sizes: '512x512', type: 'image/jpeg' }]
           : []
@@ -1156,8 +1213,8 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     }
   }, [playing, currentSong]);
 
-  // Rotation automatique Android : paysage dès que le lecteur passe en
-  // plein écran, retour portrait à la sortie (y compris à la fermeture).
+  // Rotation automatique Android : paysage dÃ¨s que le lecteur passe en
+  // plein Ã©cran, retour portrait Ã  la sortie (y compris Ã  la fermeture).
   useEffect(() => {
     if (!IS_ANDROID) return;
     if (fsOrientationRef.current !== fullscreen) {
@@ -1172,8 +1229,8 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     };
   }, [fullscreen]);
 
-  // DIAG temporaire : journaliser les transitions d'état du lecteur pour le
-  // bug « pillule invisible en portrait / visible en paysage ».
+  // DIAG temporaire : journaliser les transitions d'Ã©tat du lecteur pour le
+  // bug Â« pillule invisible en portrait / visible en paysage Â».
   useEffect(() => {
     const m = `hidden=${hidden} fs=${fullscreen} song=${!!currentSong} id=${currentSong?.id ?? "-"} vw=${window.innerWidth}x${window.innerHeight} pillOnce=${pillSeenOnce.current}`;
     fetch("http://127.0.0.1:8787/errlog?tag=pill&m=" + encodeURIComponent(m)).catch(() => {});
@@ -1235,7 +1292,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
           </span>
         </span>
         <span className="max-w-[170px] truncate text-[11px] font-medium leading-tight">
-          {buffering ? "Chargement en cours…" : currentSong.title}
+          {buffering ? "Chargement en coursâ€¦" : currentSong.title}
         </span>
         <span className="w-1.5 h-1.5 rounded-full bg-white/95 shadow-[0_0_8px_rgba(255,255,255,0.9)] animate-pulse" />
       </button>
@@ -1245,8 +1302,9 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       data-player-root
       tabIndex={0}
       style={fullscreen ? {} : { position: 'fixed', left: pos.x, top: pos.y, zIndex: 9998 }}
-      onTouchStart={fullscreen ? swipeHandlers.handleTouchStart : playerDragStart}
-      onTouchEnd={fullscreen ? swipeHandlers.handleTouchEnd : undefined}
+      onTouchStart={fullscreen ? swipeHandlers.handleTouchStart : playerTouchStart}
+      onTouchMove={fullscreen ? swipeHandlers.handleTouchMove : playerTouchMove}
+      onTouchEnd={fullscreen ? swipeHandlers.handleTouchEnd : playerTouchEnd}
       onMouseDown={fullscreen ? undefined : playerDragStart}
       className={`
         z-50 origin-bottom transition-[width,height,opacity,transform] duration-500 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)]
@@ -1334,24 +1392,6 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
             </div>
           </div>
         )}
-
-        {pillScrub && (
-          <div className="fixed left-1/2 z-[9998] -translate-x-1/2 bottom-[calc(150px+var(--sab,0px))] flex items-center gap-2.5 pointer-events-none select-none">
-            <div className="flex items-center gap-2 bg-black/60 backdrop-blur-sm rounded-full px-4 py-2.5 ring-1 ring-white/10 shadow-[0_6px_20px_-4px_rgba(0,0,0,0.6)]">
-              {pillScrub.delta >= 0 ? (
-                <Forward className="w-4 h-4 text-white/85" />
-              ) : (
-                <Rewind className="w-4 h-4 text-white/85" />
-              )}
-              <span className="text-[13px] font-semibold tabular-nums text-white/95 min-w-[42px]">
-                {fmtDelta(pillScrub.delta)}
-              </span>
-              <span className="text-[11px] text-white/55 tabular-nums">
-                {fmtTime(pillScrub.position)} / {fmtTime(pillScrub.duration)}
-              </span>
-            </div>
-          </div>
-        )}
       </div>
 
       {!fullscreen && (buffering || streamError) && (
@@ -1361,7 +1401,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
               <span className="text-xs text-red-400 font-medium">{streamError}</span>
               <button onClick={() => { setStreamError(null); setBuffering(true); if (videoRef.current) { videoRef.current.load(); setVideoMuted(true); videoRef.current.play().then(() => { setVideoMuted(false); setPlaying(true); }).catch(() => setBuffering(false)); } }} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium text-accent-red ring-1 ring-accent-red/30 hover:bg-accent-red/10 transition-all duration-200 active:scale-95">
                 <RefreshCw className="w-3 h-3" />
-                Réessayer
+                RÃ©essayer
               </button>
             </div>
           ) : (
@@ -1384,12 +1424,12 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
             </div>
             <div className="flex items-center justify-between gap-3 px-1">
               <div className="flex items-center justify-center gap-1 flex-1">
-                <Tooltip label="Lecture aléatoire">
+                <Tooltip label="Lecture alÃ©atoire">
                 <button onClick={onToggleShuffle} className={`bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${shuffle ? "text-accent-red bg-accent-red/20 ring-1 ring-accent-red/50 shadow-[0_0_12px_-2px_rgba(255,59,92,0.6)]" : "text-white/80 hover:text-white"}`}>
                   <Shuffle size={18} />
                 </button>
                 </Tooltip>
-                <Tooltip label="Répétition">
+                <Tooltip label="RÃ©pÃ©tition">
                 <button onClick={onCycleRepeat} className={`bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${repeatMode !== "off" ? "text-accent-red bg-accent-red/20 ring-1 ring-accent-red/50 shadow-[0_0_12px_-2px_rgba(255,59,92,0.6)]" : "text-white/80 hover:text-white"}`}>
                   {repeatMode === "one" ? <Repeat1 size={18} /> : <Repeat size={18} />}
                 </button>
@@ -1419,7 +1459,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
                   sliderH={22}
                 />
                 {!isLocalPlayback && (
-                  <Tooltip label="Télécharger (vidéo)">
+                  <Tooltip label="TÃ©lÃ©charger (vidÃ©o)">
                   <button onClick={() => { if (currentSong && onDownload) onDownload(currentSong, "video"); }} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors">
                     <Download size={17} />
                   </button>
@@ -1447,7 +1487,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
             {showControls && (
             <div className="flex items-center gap-1">
               {hasVideo && (
-                <Tooltip label="Plein écran">
+                <Tooltip label="Plein Ã©cran">
                 <button onClick={toggleFullscreen} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors">
                   <Maximize2 className="w-4 h-4" />
                 </button>
@@ -1500,12 +1540,12 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
               </div>
 <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center justify-center gap-2 flex-1">
-                  <Tooltip label="Lecture aléatoire">
+                  <Tooltip label="Lecture alÃ©atoire">
                   <button onClick={onToggleShuffle} className={`bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${shuffle ? "text-accent-red bg-accent-red/20 ring-1 ring-accent-red/50 shadow-[0_0_12px_-2px_rgba(255,59,92,0.6)]" : "text-white/85 hover:text-white"}`}>
                     <Shuffle size={18} />
                   </button>
                   </Tooltip>
-                  <Tooltip label="Répétition">
+                  <Tooltip label="RÃ©pÃ©tition">
                   <button onClick={onCycleRepeat} className={`bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${repeatMode !== "off" ? "text-accent-red bg-accent-red/20 ring-1 ring-accent-red/50 shadow-[0_0_12px_-2px_rgba(255,59,92,0.6)]" : "text-white/85 hover:text-white"}`}>
                     {repeatMode === "one" ? <Repeat1 size={18} /> : <Repeat size={18} />}
                   </button>
@@ -1535,7 +1575,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
                     sliderH={20}
                   />
                   {lyricLines.length > 0 && (
-                    <Tooltip label="Paroles synchronisées">
+                    <Tooltip label="Paroles synchronisÃ©es">
                     <button onClick={() => setShowLyrics((v) => !v)} data-tutorial="lyrics" className={`relative bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${showLyrics ? "text-accent-red bg-accent-red/20 ring-1 ring-accent-red/50" : "text-white/85 hover:text-white"}`}>
                       <Mic size={18} />
                     </button>
@@ -1547,7 +1587,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
                   </button>
                   </Tooltip>
                   {!isLocalPlayback && (
-                    <Tooltip label="Télécharger (vidéo)">
+                    <Tooltip label="TÃ©lÃ©charger (vidÃ©o)">
                     <button onClick={() => { if (currentSong && onDownload) onDownload(currentSong, "video"); }} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors">
                       <Download size={18} />
                     </button>
@@ -1568,7 +1608,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
                     if (!near) return null;
                     return (
                       <p key={i} className={`text-lg leading-relaxed transition-all duration-200 ${i === activeIdx ? "text-white font-semibold drop-shadow-[0_0_10px_rgba(255,59,92,0.6)]" : "text-white/80"}`}>
-                        {l.text || "♪"}
+                        {l.text || "â™ª"}
                       </p>
                     );
                   })}
@@ -1632,7 +1672,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
         <div className="w-[min(20rem,calc(100vw-48px))] rounded-2xl bg-surface border border-white/10 p-5 shadow-2xl">
           <p className="text-base font-semibold text-white text-center">Quitter le lecteur ?</p>
           <p className="mt-1 text-[11px] text-white/70 text-center leading-snug">
-            La lecture en cours sera arrêtée.
+            La lecture en cours sera arrÃªtÃ©e.
           </p>
           <div className="mt-5 flex gap-2.5">
             <button
