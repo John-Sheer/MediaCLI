@@ -137,28 +137,37 @@ export default function UpdateManager() {
       await handleDownloadAndroid();
       return;
     }
+    let update = null;
     try {
-      const update = await check();
+      update = await check();
       if (!update) {
         setError("Mise à jour introuvable.");
         setDownloading(false);
         return;
       }
+      let total = 0;
+      let done = 0;
+      // downloadAndInstall gère lui-même la fermeture de l'app puis l'installation
+      // sur Windows (l'installeur NSIS relance automatiquement la nouvelle version).
+      // On NE fait donc PAS de relaunch manuel ensuite, ce qui évite la boucle.
       await update.downloadAndInstall((event) => {
         if (event.event === "Started") {
+          total = event.data?.contentLength || 0;
+          done = 0;
           setProgress(0);
         } else if (event.event === "Progress") {
-          const chunk = event.data?.chunkLength || 0;
-          setProgress((prev) => Math.min(prev + chunk, 100));
+          done += event.data?.chunkLength || 0;
+          const pct = total > 0 ? (done / total) * 100 : done / 1048576;
+          setProgress(Math.min(pct, 100));
         } else if (event.event === "Finished") {
           setProgress(100);
         }
       });
-      await invoke("relaunch_app");
     } catch (e) {
       console.error("[updater] download failed:", e);
       setError("Échec du téléchargement. Réessayez.");
     } finally {
+      try { if (update) await update.close(); } catch {}
       setDownloading(false);
     }
   };
