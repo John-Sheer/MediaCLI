@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { TitleBar } from "./components/TitleBar.jsx";
 import { Footer } from "./components/Footer.jsx";
 import { HomeHeader, HomeTabs } from "./components/HomeHeader.jsx";
-import { StreamingView } from "./components/StreamingView.jsx";
+import { StreamingView, NowPlayingBar } from "./components/StreamingView.jsx";
 import { LocalView } from "./components/LocalView.jsx";
 import PlaylistsView from "./components/PlaylistsView.jsx";
 import { AboutModal } from "./components/AboutModal.jsx";
@@ -288,7 +288,13 @@ export default function App() {
             onToggleTor={handleVpnToggle}
             onAbout={() => dispatch({ type: "TOGGLE_ABOUT", open: true })}
           />
-          <HomeTabs homeTab={state.homeTab} onSwitch={switchTab} playlistCount={Object.keys(state.playlists).length} />
+          <HomeTabs data-tabs homeTab={state.homeTab} onSwitch={switchTab} playlistCount={Object.keys(state.playlists).length} />
+          {state.homeTab === "streaming" &&
+            !state.loading &&
+            state.results.length === 0 &&
+            !state.searchError && (
+              <NowPlayingBar state={state} onResume={actions.streamPlay} />
+          )}
         </div>
 
         <div
@@ -297,7 +303,7 @@ export default function App() {
           onMouseLeave={() => scrollRef.current?.classList.remove("scroll-show")}
           className="flex-1 min-h-0 overflow-y-auto scroll-smooth scroll-modern"
         >
-          <div className="relative max-w-2xl mx-auto px-5 pb-20 min-h-full">
+          <div className="relative max-w-2xl mx-auto px-5 pb-28 min-h-full">
             {showTorMsg && (
               <div className="absolute top-0 left-0 right-0 z-20 flex justify-center pt-2 animate-fade-in pointer-events-none">
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-yellow-500/[0.10] text-[10px] text-yellow-400/90 whitespace-nowrap">
@@ -309,6 +315,7 @@ export default function App() {
               <StreamingView
                 state={state}
                 onSearch={runSearch}
+                onLoadMore={actions.loadMore}
                 onPlay={playStreaming}
                 onDownload={actions.download}
                 onTogglePause={actions.togglePause}
@@ -351,6 +358,7 @@ export default function App() {
         currentSong={state.currentSong}
         streamUrl={state.streamUrl}
         resumeTime={state.resumeTime}
+        onPlayingChange={(p) => dispatch({ type: "SET_PLAYING", playing: p })}
         onFullscreenChange={(v) => dispatch({ type: "SET_PLAYER_FULLSCREEN", value: v })}
         onClose={actions.stop}
         onNext={actions.playNext}

@@ -5,6 +5,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { onThumbbarAction } from "../lib/thumbbar.js";
 import useSwipeGesture from "../hooks/useSwipeGesture";
+import { thumbUrl, getThumb } from "../lib/thumb.js";
+import Tooltip from "./Tooltip.jsx";
 
 const IS_ANDROID = /android/i.test(navigator.userAgent || "");
 
@@ -18,13 +20,16 @@ function VolumeControl({ volume, onMute, onVolume, showVolume, showVolumeNow, sh
   const volPct = Math.round((volume ?? 0) * 100);
   return (
     <div className="relative" onMouseEnter={showVolumeWithDelay} onMouseLeave={hideVolumeWithDelay}>
+      <Tooltip label="Volume">
       <button
         onClick={toggle}
-        className="bg-black/60 backdrop-blur-sm rounded-full p-1.5 text-white/85 hover:text-white transition-colors"
-        title="Volume"
+        className={`rounded-full p-1.5 backdrop-blur-sm transition-colors ${volume === 0
+            ? "bg-accent-red/25 text-accent-red ring-1 ring-accent-red/50"
+            : "bg-black/60 text-white/85 hover:text-white"}`}
       >
         {volume === 0 ? <VolumeX size={size} /> : <Volume2 size={size} />}
       </button>
+      </Tooltip>
       {showVolume && (
         <div
           className="absolute bottom-full left-1/2 -translate-x-1/2 pb-1 z-50"
@@ -32,13 +37,14 @@ function VolumeControl({ volume, onMute, onVolume, showVolume, showVolumeNow, sh
           onMouseLeave={hideVolumeWithDelay}
         >
           <div className="bg-black/70 backdrop-blur-md rounded-xl px-2.5 py-2 shadow-xl ring-1 ring-white/[0.08] flex flex-col items-center gap-1.5">
+            <Tooltip label={volume === 0 ? "Activer le son" : "Couper le son"}>
             <button
               onClick={(e) => { e.stopPropagation(); onMute && onMute(); }}
               className="text-white/85 hover:text-white shrink-0"
-              title={volume === 0 ? "Activer le son" : "Couper le son"}
             >
               {volume === 0 ? <VolumeX size={13} /> : <Volume2 size={13} />}
             </button>
+            </Tooltip>
             <div className="w-full flex justify-center py-0.5">
               <input
                 type="range"
@@ -66,10 +72,22 @@ function VolumeControl({ volume, onMute, onVolume, showVolume, showVolumeNow, sh
 }
 
 
-export default function Player({ currentSong, streamUrl, onClose, onNext, onPrevious, onEnded, shuffle, repeatMode, onToggleShuffle, onCycleRepeat, onFullscreenChange, playlist = [], onPlayAt, resumeTime = 0, playlists = {}, onSaveQueue, onPlayPlaylist, onDeletePlaylist, onRemoveFromPlaylist, showQueue = false, onToggleQueue, onDownload, revealSignal = 0 }) {
+function fmtTime(sec) {
+  if (!Number.isFinite(sec) || sec <= 0) return "0:00";
+  const s = Math.floor(sec);
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${r.toString().padStart(2, "0")}`;
+}
+
+function fmtDelta(delta) {
+  const d = Math.round(Math.abs(delta || 0));
+  return `${delta >= 0 ? "+" : "-"}${d}s`;
+}
+
+export default function Player({ currentSong, streamUrl, onClose, onNext, onPrevious, onEnded, shuffle, repeatMode, onToggleShuffle, onCycleRepeat, onFullscreenChange, playlist = [], onPlayAt, resumeTime = 0, playlists = {}, onSaveQueue, onPlayPlaylist, onDeletePlaylist, onRemoveFromPlaylist, showQueue = false, onToggleQueue, onDownload, revealSignal = 0, onPlayingChange }) {
   const videoRef = useRef(null);
   const playerRef = useRef(null);
-  const rafRef = useRef(null);
   const lastVolumeRef = useRef(0.4);
   const lastSaveRef = useRef(0);
   const lastBgPushRef = useRef(0);
@@ -98,7 +116,6 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       showControlsTempRef.current?.();
     }
   }, [revealSignal]);
-  const [lyrics, setLyrics] = useState(null);
   const [lyricLines, setLyricLines] = useState([]);
   const fsTimer = useRef(null);
   const [hoverTime, setHoverTime] = useState(0);
@@ -116,7 +133,6 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
   const volPctTimer = useRef(null);
   const volumeTimerRef = useRef(null);
   const loadTimerRef = useRef(null);
-  const seekRef = useRef(null);
   const resumePosRef = useRef(0);
   // Position de reprise au démarrage : consommée une seule fois, au premier
   // chargement de média (sinon un NEXT repositionnerait la nouvelle piste).
@@ -125,8 +141,19 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
   const userPauseRef = useRef(false);
   const currentSongRef = useRef(currentSong);
   useEffect(() => { currentSongRef.current = currentSong; }, [currentSong]);
-  const playingRef = useRef(playing);
-  useEffect(() => { playingRef.current = playing; }, [playing]);
+
+  // Remonte l'état de lecture au store (pour l'afficheur « En cours » des vues).
+  // Le callback est gardé dans une ref pour ne pas re-déclencher la sync à
+  // chaque render (évite toute boucle avec le re-render du store).
+  const onPlayingChangeRef = useRef(onPlayingChange);
+  useEffect(() => { onPlayingChangeRef.current = onPlayingChange; }, [onPlayingChange]);
+  const lastNotifiedPlayingRef = useRef(null);
+  useEffect(() => {
+    if (lastNotifiedPlayingRef.current !== playing) {
+      lastNotifiedPlayingRef.current = playing;
+      onPlayingChangeRef.current && onPlayingChangeRef.current(playing);
+    }
+  }, [playing]);
   const [pos, setPos] = useState(() => {
     const w = window.innerWidth;
     const h = window.innerHeight;
@@ -139,9 +166,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
   const sleepTimerRef = useRef(null);
   const sleepEndRef = useRef(0);
   const [showSleep, setShowSleep] = useState(false);
-  const playerEl = useRef(null);
   const audioCtxRef = useRef(null);
-  const sourceNodeRef = useRef(null);
   const eqNodesRef = useRef(null);
   const audioGraphBuiltRef = useRef(false);
   const [eqOpen, setEqOpen] = useState(false);
@@ -168,12 +193,12 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
   const showControlsTempRef = useRef(null); // référence stable pour éviter le TDZ dans swipeHandlers
   const [swipeFeedback, setSwipeFeedback] = useState(null);
   const swipeFeedbackTimer = useRef(null);
+  const [pillScrub, setPillScrub] = useState(null);
   const pillRef = useRef(null);
   const pillSwipe = useRef(null);
   const pillSuppressClick = useRef(false);
   const pillSeenOnce = useRef(false);
   const lastNavAtRef = useRef(0);
-  const autoCollapseTimerRef = useRef(null);
   const EQ_PRESETS = {
     "Flat":      { bass: 0,   mid: 0,   treble: 0 },
     "Rock":      { bass: 5,   mid: -1,  treble: 4 },
@@ -221,7 +246,6 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       midNode.connect(trebleNode);
       trebleNode.connect(ctx.destination);
       audioCtxRef.current = ctx;
-      sourceNodeRef.current = source;
       eqNodesRef.current = { bass: bassNode, mid: midNode, treble: trebleNode };
       audioGraphBuiltRef.current = true;
       applyEq();
@@ -251,12 +275,6 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
   }, [eqOpen]);
 
   useEffect(() => { applyEq(); }, [bass, mid, treble]);
-
-  const applyPreset = (name) => {
-    setEqPreset(name);
-    const p = EQ_PRESETS[name];
-    if (p) { setBass(p.bass); setMid(p.mid); setTreble(p.treble); }
-  };
 
   useEffect(() => {
     const p = EQ_PRESETS[eqPreset];
@@ -399,7 +417,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       autoOpenRef.current = false;
       setHidden(false);
       showControlsTempRef.current?.();
-      collapseTimerRef.current = setTimeout(() => setHidden(true), 3200);
+      collapseTimerRef.current = setTimeout(() => setHidden(true), 1000);
       return () => clearTimeout(collapseTimerRef.current);
     }
 
@@ -428,7 +446,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
         setHidden(false);
         showControlsTempRef.current?.();
         clearTimeout(collapseTimerRef.current);
-        collapseTimerRef.current = setTimeout(() => setHidden(true), 3200);
+        collapseTimerRef.current = setTimeout(() => setHidden(true), 1000);
       }
     };
     const timers = [500, 1500].map((ms) => setTimeout(tryOpen, ms));
@@ -569,11 +587,13 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       showSwipeFeedback(Volume2, `${Math.round(newVol * 100)}%`);
     },
     onSwipeDown: () => {
+      // Geste contraire de la pillule (haut = ouvrir) : glisser le lecteur
+      // plein écran vers le bas le replie en pillule.
       if (!videoRef.current?.src) return;
-      const newVol = Math.max(0, volume - 0.08);
-      handleVolumeRef.current({ target: { value: newVol } });
-      flashVolumePct();
-      showSwipeFeedback(Volume2, `${Math.round(newVol * 100)}%`);
+      clearTimeout(collapseTimerRef.current);
+      setHidden(true);
+      setFullscreen(false);
+      if (!IS_ANDROID) getCurrentWindow().setFullscreen(false).catch(() => {});
     },
     onTap: () => {
       // Le tap affiche ou masque les commandes, rien d'autre (pas de pause/lecture).
@@ -631,6 +651,17 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
   useEffect(() => { onPreviousRef.current = onPrevious; }, [onPrevious]);
   useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => { onEndedRef.current = onEnded; }, [onEnded]);
+
+  // Écoute les commandes globales de lecture venant des vues (ex : l'afficheur
+  // « En cours » de la vue Streaming veut basculer lecture/pause).
+  useEffect(() => {
+    const onToggle = (e) => {
+      e?.preventDefault?.();
+      togglePlayRef.current?.();
+    };
+    window.addEventListener("mediacli-toggle-play", onToggle);
+    return () => window.removeEventListener("mediacli-toggle-play", onToggle);
+  }, []);
 
   const requestExit = (e) => {
     e?.stopPropagation();
@@ -735,25 +766,24 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
     try {
       const q = `https://lrclib.net/api/get?track=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist || "")}`;
       const res = await fetch(q);
-      if (!res.ok) { setLyrics(null); setLyricLines([]); return; }
+      if (!res.ok) { setLyricLines([]); return; }
       const data = await res.json();
       const synced = data && data.syncedLyrics;
-      if (!synced) { setLyrics(null); setLyricLines([]); return; }
+      if (!synced) { setLyricLines([]); return; }
       const lines = synced.split("\n").map((l) => {
         const m = l.match(/\[(\d+):(\d+(?:\.\d+)?)\](.*)/);
         if (!m) return null;
         return { t: parseInt(m[1]) * 60 + parseFloat(m[2]), text: m[3].trim() };
       }).filter(Boolean);
       setLyricLines(lines);
-      setLyrics(true);
     } catch {
-      setLyrics(null); setLyricLines([]);
+      setLyricLines([]);
     }
   };
 
   useEffect(() => {
     if (fullscreen && currentSong) fetchLyrics(currentSong.title, currentSong.channel);
-    else { setLyrics(null); setLyricLines([]); }
+    else setLyricLines([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fullscreen, currentSong?.id]);
 
@@ -825,7 +855,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
 
   const pillTouchStart = (e) => {
     const t = e.touches ? e.touches[0] : e;
-    pillSwipe.current = { startX: t.clientX, startY: t.clientY, dx: 0, dy: 0, moved: false };
+    pillSwipe.current = { startX: t.clientX, startY: t.clientY, dx: 0, dy: 0, moved: false, startTime: Date.now(), scrub: false, scrubBaseProgress: progress };
   };
 
   const pillTouchMove = (e) => {
@@ -845,7 +875,25 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
         el.style.transform = `translate(-50%, ${sw.dy}px)`;
       }
     } else {
-      setPillTransform(sw.dx, 'none');
+      // Si on maintient le doigt assez longtemps sur un geste horizontal
+      // dominant, on passe en mode « scrub » : la position dans la chanson
+      // avance/reculle en suivant la distance du glissement au lieu de
+      // déclencher une chanson précédente/suivante.
+      const elapsed = Date.now() - sw.startTime;
+      if (elapsed > 200 && Math.abs(sw.dx) > 12 && duration > 0) {
+        sw.scrub = true;
+        const ratio = Math.max(1, window.innerWidth) / 2.2;
+        const nextProgress = Math.min(duration, Math.max(0, sw.scrubBaseProgress + (sw.dx / ratio) * duration));
+        handleSeekRef.current({ target: { value: nextProgress } });
+        setPillTransform(sw.dx, 'none');
+        setPillScrub({
+          delta: nextProgress - sw.scrubBaseProgress,
+          position: nextProgress,
+          duration: duration,
+        });
+      } else {
+        setPillTransform(sw.dx, 'none');
+      }
     }
   };
 
@@ -885,7 +933,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       }
       setHidden(false);
       showControlsTempRef.current?.();
-      collapseTimerRef.current = setTimeout(() => setHidden(true), 3200);
+      collapseTimerRef.current = setTimeout(() => setHidden(true), 1000);
       return;
     }
     // Gesture verticale (haut = déplier le lecteur [jamais pour un audio], bas = play/pause).
@@ -914,6 +962,17 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
         setTimeout(() => { pillSuppressClick.current = false; }, 400);
         togglePlayRef.current();
       }
+      return;
+    }
+    // Mode scrub : on a fait défiler la position dans la chanson, on ne change
+    // ni de chanson ni d'état — on retourne juste la pilule en position neutre.
+    if (sw.scrub) {
+      pillSuppressClick.current = true;
+      setPillTransform(0, 'transform 0.25s cubic-bezier(0.22,1,0.36,1)');
+      setTimeout(() => {
+        pillSuppressClick.current = false;
+        setPillScrub(null);
+      }, 450);
       return;
     }
     const triggerNext = sw.moved && dx > THRESHOLD_UP;
@@ -964,25 +1023,6 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       clearTimeout(controlsTimer.current);
     }
   }, [buffering, fullscreen, currentSong]);
-
-  const renderModeButtons = (size, gapClass) => (
-    <>
-      <button
-        onClick={onToggleShuffle}
-        title="Lecture aléatoire"
-        className={`transition-colors p-0.5 ${shuffle ? "text-accent-red" : "text-white/80 hover:text-white"}`}
-      >
-        <Shuffle size={size} />
-      </button>
-      <button
-        onClick={onCycleRepeat}
-        title={repeatMode === "one" ? "Répéter le titre" : repeatMode === "all" ? "Répéter la liste" : "Pas de répétition"}
-        className={`transition-colors p-0.5 ${repeatMode !== "off" ? "text-accent-red" : "text-white/80 hover:text-white"}`}
-      >
-        {repeatMode === "one" ? <Repeat1 size={size} /> : <Repeat size={size} />}
-      </button>
-    </>
-  );
 
   useEffect(() => {
     const getPoint = (e) => (e.touches ? e.touches[0] : e);
@@ -1052,8 +1092,8 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       playing,
       title: currentSong?.title ?? "",
       artist: currentSong?.channel ?? "",
-      artwork: currentSong?.thumbnail
-        ? "http://127.0.0.1:8787/thumb?url=" + encodeURIComponent(currentSong.thumbnail)
+      artwork: getThumb(currentSong?.thumbnail)
+        ? thumbUrl(currentSong.thumbnail)
         : "",
       position_ms: Math.round(pos * 1000),
       duration_ms: Math.round(dur * 1000),
@@ -1099,8 +1139,8 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       navigator.mediaSession.metadata = new MediaMetadata({
         title: currentSong.title,
         artist: currentSong.channel || 'MédiaCLI',
-        artwork: currentSong.thumbnail
-          ? [{ src: 'http://127.0.0.1:8787/thumb?url=' + encodeURIComponent(currentSong.thumbnail), sizes: '512x512', type: 'image/jpeg' }]
+        artwork: getThumb(currentSong.thumbnail)
+          ? [{ src: thumbUrl(currentSong.thumbnail), sizes: '512x512', type: 'image/jpeg' }]
           : []
       });
       navigator.mediaSession.setActionHandler('play', () => togglePlayRef.current());
@@ -1172,7 +1212,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
           if (isAudioLike) return;
           setHidden(false);
           clearTimeout(collapseTimerRef.current);
-          collapseTimerRef.current = setTimeout(() => setHidden(true), 3200);
+          collapseTimerRef.current = setTimeout(() => setHidden(true), 1000);
         }}
         title="Afficher le lecteur"
         style={{ bottom: "calc(52px + var(--sab, 0px))", transform: "translate(-50%, 0)" }}
@@ -1182,14 +1222,21 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
         onTouchCancel={pillTouchEnd}
         className={`fixed left-1/2 z-[9999] flex items-center gap-2 rounded-full pl-1 pr-4 py-1.5 bg-accent-red text-white ring-1 ring-white/15 shadow-[0_6px_20px_-4px_rgba(0,0,0,0.5)] hover:brightness-110 active:scale-95 transition-all duration-200 touch-none ${pillSeenOnce.current ? "" : "animate-pill-in"}`}
       >
-        <span className="w-8 h-8 rounded-full overflow-hidden shrink-0 bg-black/40 flex items-center justify-center ring-2 ring-white/20">
-          {currentSong.thumbnail ? (
-            <img src={"http://127.0.0.1:8787/thumb?url=" + encodeURIComponent(currentSong.thumbnail)} className="w-full h-full object-cover" alt="" draggable="false" />
-          ) : (
+        <span className="relative w-8 h-8 rounded-full overflow-hidden shrink-0 bg-black/40 ring-2 ring-white/20">
+          <img
+            src={getThumb(currentSong.thumbnail) ? thumbUrl(currentSong.thumbnail) : ""}
+            className="w-full h-full object-cover"
+            alt=""
+            draggable="false"
+            onError={(e) => { e.currentTarget.style.display = "none"; }}
+          />
+          <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <Music className="w-4 h-4 text-white/85" />
-          )}
+          </span>
         </span>
-        <span className="max-w-[170px] truncate text-[11px] font-medium leading-tight">{currentSong.title}</span>
+        <span className="max-w-[170px] truncate text-[11px] font-medium leading-tight">
+          {buffering ? "Chargement en cours…" : currentSong.title}
+        </span>
         <span className="w-1.5 h-1.5 rounded-full bg-white/95 shadow-[0_0_8px_rgba(255,255,255,0.9)] animate-pulse" />
       </button>
     )}
@@ -1243,7 +1290,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
               invoke("update_position", { position_ms: Math.round(t * 1000), duration_ms: Math.round(dd * 1000) }).catch(() => {});
             }
           }}
-          onLoadedMetadata={(e) => { clearLoadTimer(); setDuration(e.target.duration); setBuffering(false); setStreamError(null); setHasVideo(e.target.videoWidth > 0); if (!streamUrl.includes("/local?path=") && autoOpenRef.current) { autoOpenRef.current = false; if (e.target.videoWidth > 0) { setHidden(false); showControlsTempRef.current?.(); collapseTimerRef.current = setTimeout(() => setHidden(true), 3200); } else { clearTimeout(collapseTimerRef.current); setHidden(true); } } if (videoRef.current) { videoRef.current.volume = volume; videoRef.current.playbackRate = pitch; } const rp = resumePosRef.current > 0 ? resumePosRef.current : resumeStartRef.current; if (rp > 1 && videoRef.current) { try { videoRef.current.currentTime = rp; } catch {} } resumePosRef.current = 0; resumeStartRef.current = 0; const dur2 = Number.isFinite(e.target.duration) ? e.target.duration : 0; if (IS_ANDROID && dur2 > 0) { invoke("update_position", { position_ms: Math.round((e.target.currentTime || 0) * 1000), duration_ms: Math.round(dur2 * 1000) }).catch(() => {}); } if (videoRef.current) { setVideoMuted(true); videoRef.current.play().then(() => { setVideoMuted(false); setPlaying(true); }).catch(() => setBuffering(false)); } }}
+          onLoadedMetadata={(e) => { clearLoadTimer(); setDuration(e.target.duration); setBuffering(false); setStreamError(null); setHasVideo(e.target.videoWidth > 0); if (!streamUrl.includes("/local?path=") && autoOpenRef.current) { autoOpenRef.current = false; if (e.target.videoWidth > 0) { setHidden(false); showControlsTempRef.current?.(); collapseTimerRef.current = setTimeout(() => setHidden(true), 1000); } else { clearTimeout(collapseTimerRef.current); setHidden(true); } } if (videoRef.current) { videoRef.current.volume = volume; videoRef.current.playbackRate = pitch; } const rp = resumePosRef.current > 0 ? resumePosRef.current : resumeStartRef.current; if (rp > 1 && videoRef.current) { try { videoRef.current.currentTime = rp; } catch {} } resumePosRef.current = 0; resumeStartRef.current = 0; const dur2 = Number.isFinite(e.target.duration) ? e.target.duration : 0; if (IS_ANDROID && dur2 > 0) { invoke("update_position", { position_ms: Math.round((e.target.currentTime || 0) * 1000), duration_ms: Math.round(dur2 * 1000) }).catch(() => {}); } if (videoRef.current) { setVideoMuted(true); videoRef.current.play().then(() => { setVideoMuted(false); setPlaying(true); }).catch(() => setBuffering(false)); } }}
           onWaiting={() => setBuffering(true)}
           onPlaying={() => { clearLoadTimer(); userPauseRef.current = false; setPlaying(true); setBuffering(false); setStreamError(null); }}
           onEnded={() => {
@@ -1287,6 +1334,24 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
             </div>
           </div>
         )}
+
+        {pillScrub && (
+          <div className="fixed left-1/2 z-[9998] -translate-x-1/2 bottom-[calc(150px+var(--sab,0px))] flex items-center gap-2.5 pointer-events-none select-none">
+            <div className="flex items-center gap-2 bg-black/60 backdrop-blur-sm rounded-full px-4 py-2.5 ring-1 ring-white/10 shadow-[0_6px_20px_-4px_rgba(0,0,0,0.6)]">
+              {pillScrub.delta >= 0 ? (
+                <Forward className="w-4 h-4 text-white/85" />
+              ) : (
+                <Rewind className="w-4 h-4 text-white/85" />
+              )}
+              <span className="text-[13px] font-semibold tabular-nums text-white/95 min-w-[42px]">
+                {fmtDelta(pillScrub.delta)}
+              </span>
+              <span className="text-[11px] text-white/55 tabular-nums">
+                {fmtTime(pillScrub.position)} / {fmtTime(pillScrub.duration)}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {!fullscreen && (buffering || streamError) && (
@@ -1319,12 +1384,16 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
             </div>
             <div className="flex items-center justify-between gap-3 px-1">
               <div className="flex items-center justify-center gap-1 flex-1">
-                <button onClick={onToggleShuffle} className={`bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${shuffle ? "text-accent-red" : "text-white/80 hover:text-white"}`} title="Lecture aléatoire">
+                <Tooltip label="Lecture aléatoire">
+                <button onClick={onToggleShuffle} className={`bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${shuffle ? "text-accent-red bg-accent-red/20 ring-1 ring-accent-red/50 shadow-[0_0_12px_-2px_rgba(255,59,92,0.6)]" : "text-white/80 hover:text-white"}`}>
                   <Shuffle size={18} />
                 </button>
-                <button onClick={onCycleRepeat} className={`bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${repeatMode !== "off" ? "text-accent-red" : "text-white/80 hover:text-white"}`} title="Répétition">
+                </Tooltip>
+                <Tooltip label="Répétition">
+                <button onClick={onCycleRepeat} className={`bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${repeatMode !== "off" ? "text-accent-red bg-accent-red/20 ring-1 ring-accent-red/50 shadow-[0_0_12px_-2px_rgba(255,59,92,0.6)]" : "text-white/80 hover:text-white"}`}>
                   {repeatMode === "one" ? <Repeat1 size={18} /> : <Repeat size={18} />}
                 </button>
+                </Tooltip>
               </div>
               <div className="flex items-center justify-center gap-2 flex-1">
                 <button onClick={onPrevious} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/90 hover:text-white transition-colors">
@@ -1350,9 +1419,11 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
                   sliderH={22}
                 />
                 {!isLocalPlayback && (
-                  <button onClick={() => { if (currentSong && onDownload) onDownload(currentSong, "video"); }} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors" title="Télécharger (vidéo)">
+                  <Tooltip label="Télécharger (vidéo)">
+                  <button onClick={() => { if (currentSong && onDownload) onDownload(currentSong, "video"); }} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors">
                     <Download size={17} />
                   </button>
+                  </Tooltip>
                 )}
               </div>
             </div>
@@ -1362,8 +1433,8 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
           <div className="absolute top-2 left-2 right-2 flex items-center justify-between z-40 transition-opacity duration-300">
             <div className="flex items-center gap-2 min-w-0 cursor-grab active:cursor-grabbing" style={{ touchAction: 'none' }} onMouseDown={handleDragStart} onTouchStart={(e) => { e.stopPropagation(); handleDragStart(e); }}>
               <div className="w-6 h-6 overflow-hidden shrink-0 bg-white/[0.06] ring-1 ring-white/[0.08]">
-                {currentSong.thumbnail ? (
-                  <img src={"http://127.0.0.1:8787/thumb?url=" + encodeURIComponent(currentSong.thumbnail)} className="w-full h-full object-cover" alt="" draggable="false" />
+                {getThumb(currentSong.thumbnail) ? (
+                  <img src={thumbUrl(currentSong.thumbnail)} className="w-full h-full object-cover" alt="" draggable="false" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center"><Music className="w-3 h-3 text-white/80" /></div>
                 )}
@@ -1376,16 +1447,22 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
             {showControls && (
             <div className="flex items-center gap-1">
               {hasVideo && (
-                <button onClick={toggleFullscreen} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors" title="Plein écran">
+                <Tooltip label="Plein écran">
+                <button onClick={toggleFullscreen} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors">
                   <Maximize2 className="w-4 h-4" />
                 </button>
+                </Tooltip>
               )}
-              <button onClick={() => setHidden(true)} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors" title="Masquer le lecteur">
+              <Tooltip label="Masquer le lecteur">
+              <button onClick={() => setHidden(true)} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors">
                 <EyeOff className="w-4 h-4" />
               </button>
-              <button onClick={requestExit} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors" title="Fermer">
+              </Tooltip>
+              <Tooltip label="Fermer">
+              <button onClick={requestExit} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors">
                 <X className="w-4 h-4" />
               </button>
+              </Tooltip>
             </div>
             )}
           </div>
@@ -1423,12 +1500,16 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
               </div>
 <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center justify-center gap-2 flex-1">
-                  <button onClick={onToggleShuffle} className={`bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${shuffle ? "text-accent-red" : "text-white/85 hover:text-white"}`} title="Lecture aléatoire">
+                  <Tooltip label="Lecture aléatoire">
+                  <button onClick={onToggleShuffle} className={`bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${shuffle ? "text-accent-red bg-accent-red/20 ring-1 ring-accent-red/50 shadow-[0_0_12px_-2px_rgba(255,59,92,0.6)]" : "text-white/85 hover:text-white"}`}>
                     <Shuffle size={18} />
                   </button>
-                  <button onClick={onCycleRepeat} className={`bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${repeatMode !== "off" ? "text-accent-red" : "text-white/85 hover:text-white"}`} title="Répétition">
+                  </Tooltip>
+                  <Tooltip label="Répétition">
+                  <button onClick={onCycleRepeat} className={`bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${repeatMode !== "off" ? "text-accent-red bg-accent-red/20 ring-1 ring-accent-red/50 shadow-[0_0_12px_-2px_rgba(255,59,92,0.6)]" : "text-white/85 hover:text-white"}`}>
                     {repeatMode === "one" ? <Repeat1 size={18} /> : <Repeat size={18} />}
                   </button>
+                  </Tooltip>
                 </div>
                 <div className="flex items-center justify-center gap-4 flex-1">
                   <button onClick={onPrevious} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors">
@@ -1454,17 +1535,23 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
                     sliderH={20}
                   />
                   {lyricLines.length > 0 && (
-                    <button onClick={() => setShowLyrics((v) => !v)} data-tutorial="lyrics" className={`relative bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${showLyrics ? "text-accent-red" : "text-white/85 hover:text-white"}`} title="Paroles synchronisées">
+                    <Tooltip label="Paroles synchronisées">
+                    <button onClick={() => setShowLyrics((v) => !v)} data-tutorial="lyrics" className={`relative bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${showLyrics ? "text-accent-red bg-accent-red/20 ring-1 ring-accent-red/50" : "text-white/85 hover:text-white"}`}>
                       <Mic size={18} />
                     </button>
+                    </Tooltip>
                   )}
-                  <button onClick={() => setShowSleep((o) => !o)} data-tutorial="sleep-timer" className={`relative bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${sleepMinutes > 0 || showSleep ? "text-accent-red" : "text-white/85 hover:text-white"}`} title="Minuterie de sommeil">
+                  <Tooltip label="Minuterie de sommeil">
+                  <button onClick={() => setShowSleep((o) => !o)} data-tutorial="sleep-timer" className={`relative bg-black/60 backdrop-blur-sm rounded-full p-2.5 transition-colors ${sleepMinutes > 0 || showSleep ? "text-accent-red bg-accent-red/20 ring-1 ring-accent-red/50" : "text-white/85 hover:text-white"}`}>
                     <Timer size={18} />
                   </button>
+                  </Tooltip>
                   {!isLocalPlayback && (
-                    <button onClick={() => { if (currentSong && onDownload) onDownload(currentSong, "video"); }} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors" title="Télécharger (vidéo)">
+                    <Tooltip label="Télécharger (vidéo)">
+                    <button onClick={() => { if (currentSong && onDownload) onDownload(currentSong, "video"); }} className="bg-black/60 backdrop-blur-sm rounded-full p-2.5 text-white/85 hover:text-white transition-colors">
                       <Download size={18} />
                     </button>
+                    </Tooltip>
                   )}
                 </div>
               </div>
@@ -1491,9 +1578,11 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
           })()}
           {showSleep && (
             <div style={{ bottom: `calc(var(--sab, 20px) + 112px)` }} className="absolute left-4 z-20 w-56 p-4 pt-3 rounded-2xl bg-black/70 backdrop-blur-md border border-white/[0.08] pointer-events-auto animate-fade-in">
-              <button onClick={() => setShowSleep(false)} className="absolute top-2 right-2 z-30 p-1 rounded-md text-white/70 hover:text-white hover:bg-white/[0.08] transition-colors" title="Fermer">
+              <Tooltip label="Fermer" side="left">
+              <button onClick={() => setShowSleep(false)} className="absolute top-2 right-2 z-30 p-1 rounded-md text-white/70 hover:text-white hover:bg-white/[0.08] transition-colors">
                 <X className="w-3.5 h-3.5" />
               </button>
+              </Tooltip>
               <p className="text-xs uppercase tracking-wider text-white/80 mb-3">Minuterie de sommeil</p>
               <div className="grid grid-cols-2 gap-2">
                 {[15, 30, 45, 60].map((m) => (

@@ -453,7 +453,7 @@ export function LocalView({ state, actions, onPlayFile, playlists, onAddToPlayli
 
   return (
     <section className="relative flex-1 min-h-0 pt-2">
-      <div className="relative z-10 animate-fade-in-up">
+      <div className="sticky top-0 z-20 bg-bg/85 backdrop-blur-xl animate-fade-in-up pb-2">
         <div className="relative mb-3">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/40 pointer-events-none" />
           <input
@@ -496,8 +496,9 @@ export function LocalView({ state, actions, onPlayFile, playlists, onAddToPlayli
             Aléatoire
           </button>
         </div>
+      </div>
 
-        <div className="mb-3 h-px" style={{ background: "linear-gradient(to right, transparent, rgba(255,255,255,0.12), transparent)" }} />
+      <div className="mb-3 h-px" style={{ background: "linear-gradient(to right, transparent, rgba(255,255,255,0.12), transparent)" }} />
 
         {localScanning && localDirs.length === 0 ? (
           <SkeletonRows />
@@ -635,7 +636,6 @@ export function LocalView({ state, actions, onPlayFile, playlists, onAddToPlayli
           </div>
           </>
         )}
-      </div>
     </section>
   );
 }

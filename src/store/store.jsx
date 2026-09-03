@@ -1,13 +1,11 @@
-import { createContext, useContext, useReducer, useEffect, useRef } from "react";
-import { api, friendlyError, SERVER_UNREACHABLE } from "../api/client.js";
-import { invoke } from "@tauri-apps/api/core";
+import { createContext, useContext, useReducer, useEffect } from "react";
+import { api } from "../api/client.js";
 
 const initialState = {
   homeTab: "streaming",
   aboutOpen: false,
   vpnModal: null,
   playerFullscreen: false,
-  error: null,
 
   // recherche streaming
   query: "",
@@ -15,11 +13,14 @@ const initialState = {
   loading: false,
   searchError: null,
   menuSongId: null,
+  moreLoading: false,
+  moreVariants: [],
 
   // lecture
   currentSong: null,
   streamUrl: null,
   isLocal: false,
+  isPlaying: false,
   resumeTime: 0,
   playlist: [],
   shuffle: false,
@@ -129,8 +130,9 @@ function reducer(state, action) {
     case "SET_PLAYER_FULLSCREEN":
       return { ...state, playerFullscreen: action.value };
 
-    case "SET_ERROR":
-      return { ...state, error: action.error };
+    case "SET_PLAYING":
+      if (state.isPlaying === action.playing) return state;
+      return { ...state, isPlaying: action.playing };
 
     case "SET_QUERY":
       return {
@@ -140,13 +142,22 @@ function reducer(state, action) {
       };
 
     case "SEARCH_START":
-      return { ...state, loading: true, searchError: null, results: [] };
+      return { ...state, loading: true, searchError: null, results: [], moreLoading: false, moreVariants: [] };
 
     case "SEARCH_SUCCESS":
-      return { ...state, loading: false, results: action.results };
+      return { ...state, loading: false, results: action.results, moreVariants: action.variants || [] };
 
     case "SEARCH_ERROR":
-      return { ...state, loading: false, searchError: action.error };
+      return { ...state, loading: false, searchError: action.error, moreLoading: false, moreVariants: [] };
+
+    case "MORE_START":
+      return { ...state, moreLoading: true };
+
+    case "MORE_SUCCESS":
+      return { ...state, moreLoading: false, results: action.results, moreVariants: action.variants || [] };
+
+    case "MORE_ERROR":
+      return { ...state, moreLoading: false };
 
     case "SET_MENU_SONG":
       return { ...state, menuSongId: action.id };
@@ -236,7 +247,7 @@ function reducer(state, action) {
     }
 
     case "STOP_PLAYBACK":
-      return { ...state, currentSong: null, streamUrl: null };
+      return { ...state, currentSong: null, streamUrl: null, isPlaying: false };
 
     case "TOGGLE_SHUFFLE":
       return { ...state, shuffle: !state.shuffle };
@@ -274,9 +285,6 @@ function reducer(state, action) {
 
     case "LOCAL_FOLDER_ERROR":
       return { ...state, localFolderError: action.error, localFolderLoading: false };
-
-    case "LOCAL_RESET_FOLDER":
-      return { ...state, localFolder: "", localFiles: [], localFolderError: null };
 
     case "DOWNLOAD_STATUS":
       return { ...state, downloadStatus: { ...state.downloadStatus, [action.key]: action.status } };

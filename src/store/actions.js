@@ -47,12 +47,53 @@ export function useActions() {
     try {
       const data = await api.search(query);
       if (Array.isArray(data)) {
-        dispatch({ type: "SEARCH_SUCCESS", results: data });
+        dispatch({ type: "SEARCH_SUCCESS", results: data, variants: similarVariants(query) });
         warmStreams(data);
       } else dispatch({ type: "SEARCH_ERROR", error: friendlyError(data.error) || "Erreur inconnue du serveur" });
     } catch (err) {
       console.error("Erreur de recherche :", err);
       dispatch({ type: "SEARCH_ERROR", error: SERVER_UNREACHABLE });
+    }
+  };
+
+  // Termes « similaires » utilisés pour élargir la liste vers l'infini : chaque
+  // variante lancée en arrière-plan (au scroll) ramène des contenus proches qui
+  // sont fusionnés à ceux déjà affichés (sans doublon).
+  const similarVariants = (query) => {
+    const base = query.trim();
+    const variants = [
+      `${base} live`,
+      `${base} official audio`,
+      `${base} official video`,
+      `${base} remix`,
+      `${base} remaster`,
+      `${base} lyrics`,
+      `${base} instrumental`,
+      `${base} acoustic`,
+      `${base} cover`,
+      `${base} version`,
+    ];
+    return variants;
+  };
+
+  const loadMore = async () => {
+    const variant = state.moreVariants && state.moreVariants[0];
+    if (!variant || state.moreLoading) return;
+    dispatch({ type: "MORE_START" });
+    try {
+      const data = await api.search(variant);
+      const existing = new Set((state.results || []).map((r) => r.id).filter(Boolean));
+      const fresh = Array.isArray(data) ? data.filter((r) => r && r.id && !existing.has(r.id)) : [];
+      const variants = (state.moreVariants || []).slice(1);
+      dispatch({
+        type: "MORE_SUCCESS",
+        results: [...(state.results || []), ...fresh],
+        variants,
+      });
+      warmStreams(fresh);
+    } catch (err) {
+      console.error("Erreur de chargement de contenus similaires :", err);
+      dispatch({ type: "MORE_ERROR" });
     }
   };
 
@@ -309,16 +350,6 @@ const modeFlags = (mode) => {
     }
   };
 
-  const pickFolder = async () => {
-    try {
-      const dir = await invoke("select_folder_dialog");
-      if (dir && typeof dir === "string") openFolder(dir);
-    } catch (err) {
-      console.error(err);
-      dispatch({ type: "LOCAL_FOLDER_ERROR", error: String(err) });
-    }
-  };
-
   const playFolder = async (path) => {
     try {
       const [a, v] = await Promise.all([api.listFolder(path, "audio"), api.listFolder(path, "video")]);
@@ -345,8 +376,6 @@ const modeFlags = (mode) => {
     }
   };
 
-  const resetFolder = () => dispatch({ type: "LOCAL_RESET_FOLDER" });
-
   const playAllFolders = async (mode) => {
     const dirs = state.localDirs || [];
     const all = [];
@@ -371,7 +400,6 @@ const modeFlags = (mode) => {
     });
   };
 
-  const createPlaylist = (name) => dispatch({ type: "CREATE_PLAYLIST", name });
   const renamePlaylist = (id, name) => dispatch({ type: "RENAME_PLAYLIST", id, name });
   const deletePlaylist = (id) => dispatch({ type: "DELETE_PLAYLIST", id });
   const addToPlaylist = (id, track) => dispatch({ type: "ADD_TO_PLAYLIST", id, track });
@@ -380,6 +408,7 @@ const modeFlags = (mode) => {
 
   return {
     search,
+    loadMore,
     play,
     playLocal,
     playNext,
@@ -395,9 +424,6 @@ const modeFlags = (mode) => {
     openFolder,
     playFolder,
     playAllFolders,
-    pickFolder,
-    resetFolder,
-    createPlaylist,
     renamePlaylist,
     deletePlaylist,
     addToPlaylist,

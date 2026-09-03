@@ -31,9 +31,9 @@ export function HomeHeader({ torActive, onToggleTor, onAbout }) {
   );
 }
 
-export function HomeTabs({ homeTab, onSwitch, playlistCount }) {
+export function HomeTabs({ homeTab, onSwitch, playlistCount, ...rest }) {
   return (
-    <div className="flex items-center justify-center gap-2 my-3 p-1 rounded-xl bg-black ring-1 ring-white/[0.06] w-fit mx-auto">
+    <div {...rest} className="flex items-center justify-center gap-2 my-3 p-1 rounded-xl bg-black ring-1 ring-white/[0.06] w-fit mx-auto">
       <button
         onClick={() => onSwitch("streaming")}
         className={`tab-pill px-5 py-2 rounded-lg text-xs font-medium border ${

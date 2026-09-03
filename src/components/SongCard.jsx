@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Headphones, Music, Check, Play, Pause, Download, Plus, ListPlus, AlertTriangle, MoreVertical } from "lucide-react";
-
-const THUMB_PROXY = "http://127.0.0.1:8787/thumb?url=";
+import { thumbUrl } from "../lib/thumb.js";
+import Tooltip from "./Tooltip.jsx";
 
 function formatDuration(seconds) {
   if (!seconds) return "--:--";
@@ -35,6 +35,21 @@ function ErrorTag({ info, onAuthorize }) {
 
 export default function SongCard({ song, onPlay, onDownload, onTogglePause, status, progress, paused = {}, errors = {}, menuOpen, onMenuToggle, playlists = {}, onAddToPlaylist, onCreateAndAdd, isPlaying, onAuthorize, showPlay = false, onReveal, tutorial }) {
   const [showPlSub, setShowPlSub] = useState(false);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e) => {
+      const card = e.target?.closest?.("[data-songcard]");
+      if (!card) { onMenuToggle(); return; }
+      const menu = card.querySelector("[data-songmenu]");
+      const more = card.querySelector("[data-more]");
+      if (menu && menu.contains(e.target)) return;
+      if (more && more.contains(e.target)) return;
+      onMenuToggle();
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [menuOpen]);
 
   const addToPl = (id) => {
     if (id === "__new") onCreateAndAdd && onCreateAndAdd(song);
@@ -138,7 +153,7 @@ export default function SongCard({ song, onPlay, onDownload, onTogglePause, stat
   };
 
   return (
-    <div className="relative animate-fade-in">
+    <div className="relative animate-fade-in" data-songcard>
       <div
         onClick={() => { if (!isPlaying && onReveal) onReveal(); }}
         data-tutorial={tutorial}
@@ -147,7 +162,7 @@ export default function SongCard({ song, onPlay, onDownload, onTogglePause, stat
         <div className={`relative aspect-video overflow-hidden transition-all duration-300`}>
           {song.thumbnail ? (
             <img
-              src={`${THUMB_PROXY}${encodeURIComponent(song.thumbnail)}`}
+              src={thumbUrl(song.thumbnail)}
               alt=""
               loading="lazy"
               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
@@ -167,13 +182,14 @@ export default function SongCard({ song, onPlay, onDownload, onTogglePause, stat
                 <span className="w-[3px] h-3 rounded-sm bg-accent-red playing-bar" style={{ animationDelay: "-660ms" }} />
               </span>
             ) : showPlay ? (
+              <Tooltip label="Lecture">
               <button
                 onClick={(e) => { e.stopPropagation(); onPlay(song); }}
                 className="w-14 h-14 rounded-full bg-white/[0.10] ring-1 ring-white/20 backdrop-blur-md flex items-center justify-center shadow-[0_0_20px_-4px_rgba(255,59,92,0.45)] scale-100 transition-all duration-300 animate-fade-in active:scale-90 active:bg-white/20"
-                title="Lecture"
               >
                 <Play className="w-6 h-6 text-white translate-x-[1px]" fill="currentColor" />
               </button>
+              </Tooltip>
             ) : (
               null
             )}
@@ -185,14 +201,16 @@ export default function SongCard({ song, onPlay, onDownload, onTogglePause, stat
             </p>
           </div>
 
+          <Tooltip label="Plus d'actions">
           <button
             onClick={(e) => { e.stopPropagation(); onMenuToggle(song.id); }}
+            data-more
             data-tutorial="more-actions"
-            title="Plus d'actions"
             className="absolute top-2 right-2 z-20 p-2 rounded-lg bg-black/45 backdrop-blur-md text-white/90 hover:text-white hover:bg-black/70 transition-all duration-200 active:scale-90"
           >
             <MoreVertical className="w-4 h-4" />
           </button>
+          </Tooltip>
 
           <div onClick={(e) => e.stopPropagation()} className="absolute inset-x-0 bottom-0 z-10 px-1.5 pt-4 pb-1.5 bg-gradient-to-t from-black/90 via-black/60 to-transparent">
             <div className="flex items-center gap-2 px-1 mb-1 min-w-0">
@@ -225,7 +243,7 @@ export default function SongCard({ song, onPlay, onDownload, onTogglePause, stat
       </div>
 
       {menuOpen && (
-        <div className="absolute right-2 top-2 z-30 min-w-[200px] bg-surface/95 backdrop-blur-xl border border-white/[0.08] rounded-xl p-1.5 shadow-2xl animate-fade-in-down origin-top-right">
+        <div data-songmenu className="absolute right-2 top-2 z-30 min-w-[200px] bg-surface/95 backdrop-blur-xl border border-white/[0.08] rounded-xl p-1.5 shadow-2xl animate-fade-in-down origin-top-right">
           <button
             onClick={(e) => { e.stopPropagation(); onPlay(song); onMenuToggle(); }}
             className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-white/90 hover:bg-accent-red/10 hover:text-accent-red transition-all duration-150"
@@ -276,7 +294,7 @@ export default function SongCard({ song, onPlay, onDownload, onTogglePause, stat
               ))}
             </div>
           )}
-        </div>
+          </div>
       )}
     </div>
   );

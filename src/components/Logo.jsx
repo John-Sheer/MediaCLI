@@ -29,5 +29,3 @@ export function CLIText({ className = "", bold = true }) {
     </span>
   );
 }
-
-export const CLI_COLOR = CLI_RED;

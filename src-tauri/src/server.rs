@@ -1,4 +1,3 @@
-use async_stream::stream;
 use axum::{
     body::Body,
     extract::{Request, Query, State},
@@ -15,7 +14,6 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
-    convert::Infallible,
     fs,
     io::{Read as _, Seek as _, SeekFrom},
     path::{Path, PathBuf},
@@ -23,7 +21,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::{
-    io::{AsyncReadExt, AsyncSeekExt},
+    io::AsyncReadExt,
     net::TcpStream,
     process::Command,
     sync::RwLock,
@@ -638,7 +636,7 @@ async fn youtubei_search(
     let mut results = Vec::new();
     // Une page YouTube ne renvoie souvent qu'une vingtaine de résultats : on
     // suit le jeton de continuation jusqu'à atteindre le plafond demandé.
-    for _ in 0..5 {
+    for _ in 0..10 {
         let page = parse_search_page(&data, limit - results.len(), &mut seen);
         results.extend(page.results);
         if results.len() >= limit {
@@ -666,7 +664,7 @@ async fn youtubei_search_android(
     let mut data = innertube_android_request(client, "search", key, serde_json::json!({ "query": query })).await?;
     let mut seen = std::collections::HashSet::new();
     let mut results = Vec::new();
-    for _ in 0..5 {
+    for _ in 0..10 {
         let page = parse_search_page(&data, limit - results.len(), &mut seen);
         results.extend(page.results);
         if results.len() >= limit {
@@ -2212,7 +2210,7 @@ async fn run_search(state: ServerState, q: String, origin: Option<&str>) -> Resp
     // les doublons. Chaque client a son propre classement, ce qui permet
     // d'obtenir bien plus de résultats qu'avec un seul chemin.
     let merged = if let Some(ref key) = state.innertube_key {
-        const SEARCH_CAP: usize = 60;
+        const SEARCH_CAP: usize = 150;
         let (web, android) = tokio::join!(
             youtubei_search(&client, key, &q, SEARCH_CAP),
             youtubei_search_android(&client, key, &q, SEARCH_CAP)

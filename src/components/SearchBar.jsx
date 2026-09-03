@@ -29,6 +29,14 @@ export default function SearchBar({ query, setQuery, onSearch, loading }) {
     onSearch();
   };
 
+  useEffect(() => {
+    const onFocus = () => {
+      formRef.current?.querySelector("input")?.focus();
+    };
+    window.addEventListener("mediacli-focus-search", onFocus);
+    return () => window.removeEventListener("mediacli-focus-search", onFocus);
+  }, []);
+
   return (
     <form
       ref={formRef}

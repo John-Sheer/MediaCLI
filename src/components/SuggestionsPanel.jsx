@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Sparkles, RefreshCw, Loader2, Play, Music, AlertCircle } from "lucide-react";
 import { api } from "../api/client.js";
 import { getPreferenceTerms } from "../lib/suggestions.js";
-
-const THUMB_PROXY = "http://127.0.0.1:8787/thumb?url=";
+import { thumbUrl } from "../lib/thumb.js";
 const MAX = 8;
 
 function shuffle(list) {
@@ -25,7 +24,7 @@ function SongSuggestion({ song, onPlay }) {
       <div className="relative aspect-video overflow-hidden">
         {song.thumbnail ? (
           <img
-            src={`${THUMB_PROXY}${encodeURIComponent(song.thumbnail)}`}
+            src={thumbUrl(song.thumbnail)}
             alt=""
             loading="lazy"
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"

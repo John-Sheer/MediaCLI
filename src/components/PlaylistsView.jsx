@@ -2,8 +2,9 @@
 import { Music, Play, Repeat, Shuffle, Trash2, ListMusic, Plus, X, Pencil, Check, Loader2, FolderOpen, ChevronLeft, ChevronDown, ListRestart, Video } from "lucide-react";
 import { api } from "../api/client.js";
 import ConfirmModal from "./ConfirmModal.jsx";
+import { thumbUrl, getThumb } from "../lib/thumb.js";
+import Tooltip from "./Tooltip.jsx";
 
-const THUMB_PROXY = "http://127.0.0.1:8787/thumb?url=";
 
 const ACTION_BTN =
   "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-medium text-white/80 hover:text-white hover:bg-white/[0.08] ring-1 ring-white/[0.08] transition-all duration-150 active:scale-95";
@@ -49,13 +50,13 @@ function CoverArt({ thumbs }) {
     <div className="w-full h-full grid grid-cols-2 gap-px bg-black/50">
       {[0, 1, 2, 3].map((i) =>
         thumbs[i] ? (
-          <img
-            key={i}
-            src={THUMB_PROXY + encodeURIComponent(thumbs[i])}
-            className="w-full h-full object-cover"
-            alt=""
-            loading="lazy"
-          />
+            <img
+              key={i}
+              src={thumbUrl(thumbs[i])}
+              className="w-full h-full object-cover"
+              alt=""
+              loading="lazy"
+            />
         ) : (
           <div key={i} className="w-full h-full bg-white/[0.03]" />
         )
@@ -361,27 +362,30 @@ function PlaylistCard({ id, playlist, isOpen, onToggle, onPlay, onDelete, onRena
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <Tooltip label="Lire tout">
             <button
               onClick={(e) => { e.stopPropagation(); onPlay(id); }}
-              title="Lire tout"
               className="w-9 h-9 rounded-full bg-white/[0.08] text-white ring-1 ring-white/15 hover:bg-white/[0.14] hover:ring-white/25 transition-all duration-200 active:scale-90 flex items-center justify-center"
             >
               <Play className="w-4 h-4 ml-px" fill="currentColor" />
             </button>
+            </Tooltip>
+            <Tooltip label="Lire la playlist en boucle">
             <button
               onClick={(e) => { e.stopPropagation(); onPlay(id, undefined, "loop"); }}
-              title="Lire la playlist en boucle"
               className="w-9 h-9 rounded-full bg-white/[0.06] text-white/90 ring-1 ring-white/12 hover:bg-white/[0.12] hover:ring-white/25 transition-all duration-200 active:scale-90 flex items-center justify-center"
             >
               <Repeat className="w-4 h-4" />
             </button>
+            </Tooltip>
+            <Tooltip label="Lire la playlist en aléatoire">
             <button
               onClick={(e) => { e.stopPropagation(); onPlay(id, undefined, "shuffle"); }}
-              title="Lire la playlist en aléatoire"
               className="w-9 h-9 rounded-full bg-white/[0.06] text-white/90 ring-1 ring-white/12 hover:bg-white/[0.12] hover:ring-white/25 transition-all duration-200 active:scale-90 flex items-center justify-center"
             >
               <Shuffle className="w-4 h-4" />
             </button>
+            </Tooltip>
             <ChevronDown
               className={
                 "w-4 h-4 transition-transform duration-300 " +
@@ -485,9 +489,9 @@ function PlaylistCard({ id, playlist, isOpen, onToggle, onPlay, onDelete, onRena
                           <Music className={`w-4 h-4 ${rowPlaying ? "text-white" : "text-white/55"}`} />
                         )}
                       </span>
-                      {t.thumbnail ? (
-                        <img src={THUMB_PROXY + encodeURIComponent(t.thumbnail)} className="w-8 h-8 rounded-md object-cover ring-1 ring-white/[0.08] shrink-0" alt="" loading="lazy" />
-                      ) : null}
+                      {t.thumbnail ? getThumb(t.thumbnail) ? (
+                        <img src={thumbUrl(t.thumbnail)} className="w-8 h-8 rounded-md object-cover ring-1 ring-white/[0.08] shrink-0" alt="" loading="lazy" />
+                      ) : null : null}
                       <span className={`flex-1 min-w-0 ${
                         rowPlaying ? "text-white font-semibold" : "text-white/90 group-hover/row:text-white"
                       }`}>

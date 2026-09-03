@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Volume2, Play, FolderOpen, Bell, RotateCcw, Info, ChevronRight, Check } from "lucide-react";
+import { X, Volume2, Play, FolderOpen, Bell, RotateCcw, Info, ChevronRight } from "lucide-react";
 
 const SETTINGS_KEY = "mediacli-settings";
 

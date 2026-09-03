@@ -1,4 +1,5 @@
 import { Settings as SettingsIcon } from "lucide-react";
+import { CLIText } from "./Logo.jsx";
 
 const COPYRIGHT_YEAR = new Date().getFullYear();
 
@@ -10,6 +11,7 @@ export function Footer({ onSettings }) {
         <span className="font-mono text-[11px] text-white/45 tracking-wider whitespace-nowrap">
           © {COPYRIGHT_YEAR} Sheer
         </span>
+        <CLIText className="text-[13px] tracking-widest shrink-0" />
         <button
           onClick={onSettings}
           title="Paramètres"
