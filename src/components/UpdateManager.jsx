@@ -165,7 +165,8 @@ export default function UpdateManager() {
       });
     } catch (e) {
       console.error("[updater] download failed:", e);
-      setError("Échec du téléchargement. Réessayez.");
+      const msg = (e && (e.message || e.toString && e.toString())) || JSON.stringify(e);
+      setError(`Échec du téléchargement : ${msg}`);
     } finally {
       try { if (update) await update.close(); } catch {}
       setDownloading(false);

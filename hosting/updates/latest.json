@@ -1,15 +1,15 @@
 {
-    "version":  "0.1.28",
-    "notes":  "Mise a jour MediaCLI 0.1.28 (Windows + Android).",
-    "pub_date":  "2026-09-03T17:16:55Z",
+    "version":  "0.1.30",
+    "notes":  "Correctifs Windows : controles musique sur la pillule, defilement corrige (h-dvh), diagnostic telechargement.",
+    "pub_date":  "2026-09-04T06:17:02Z",
     "platforms":  {
                       "android-arm64":  {
                                             "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.28/MediaCLI.apk",
                                             "signature":  ""
                                         },
                       "windows-x86_64":  {
-                                             "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.28/MediaCLI-Setup.exe",
-                                             "signature":  "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUhOcFoyNWhkSFZ5WlNCbWNtOXRJSFJoZFhKcElITmxZM0psZENCclpYa0tVbFZSVDBObWJFbFZWWEIxYVVWYVRGaEJPSE5SYTNBM0szbDViRk5pZUdoaE1GWm9Va1JWY2pCc1ZURllLMHBpWjJwRWVXazFTMk51UW5GeGVITkZOSEVyVmk5d2QxZHJNamR6TTJsSGEydG9UMlpOUjJGRmRtMWllRTlCUkVOME0wRTRQUXAwY25WemRHVmtJR052YlcxbGJuUTZJSFJwYldWemRHRnRjRG94TnpnM09UWTFOemswQ1dacGJHVTZUV1ZrYVdGRFRFbGZNQzR4TGpFMFgzZzJOQzF6WlhSMWNDNWxlR1VLT0hSaU5sSnVSVVZKVW1oVU0wcHdWU3RtTmtwamExUmthbVZKTWpkWmExWkJNbWN5TVdkeU5UVnRRVmxyWlRscVlpczVabHBVTlRKT1lXSjFiVTlHVVRCeWVWaEJVMnRFVjNZNFduRlFielpHYmxVM1FYYzlQUW89"
+                                             "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.30/MediaCLI-Setup.exe",
+                                             "signature":  "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUhOcFoyNWhkSFZ5WlNCbWNtOXRJSFJoZFhKcElITmxZM0psZENCclpYa0tVbFZSVDBObWJFbFZWWEIxYVVjelRVSjFLMFJrV0VZMk5rbHFkalpvYmtGSVFtNWhVa0pZWjFaa1FVeFVVRzAzVVZkMEwweDZhMmhDZWtwTVJqWlpUSEpNYlRSUFlrMXNkSGN4T1M5Q1dFUTFORWx3WWtsM01IUnZhMFE1YTNWelJWRlZQUXAwY25WemRHVmtJR052YlcxbGJuUTZJSFJwYldWemRHRnRjRG94TnpnNE5Ea3hNek0xQ1dacGJHVTZUV1ZrYVdGRFRFbGZNQzR4TGpNd1gzZzJOQzF6WlhSMWNDNWxlR1VLWlc1eGVVRnJTa2R2UW1aeGRsWXZSRWhyUlZGVmVVSTNiRzVXZW14S01tNW1UbHBMV1dsWVltZEZSV2xxUWtnMFNEbDZPWFk0YzA4NVZ6aG1aR1pVVFc1a1NERm9OV3hPTDBOclZVa3phMkpGWTNGdlJHYzlQUW89"
                                          }
                   }
 }

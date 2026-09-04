@@ -270,7 +270,7 @@ export default function App() {
     (state.homeTab === "playlists" && Object.keys(state.playlists).length === 0);
 
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-b from-bg via-[#07070d] to-bg">
+    <div className="h-dvh flex flex-col bg-gradient-to-b from-bg via-[#07070d] to-bg">
       <div className="fixed -top-px left-0 right-0 h-px bg-bg z-[9999]" />
       <div className="fixed inset-0 bg-grain pointer-events-none" />
           {!state.playerFullscreen && <TitleBar onAbout={() => dispatch({ type: "TOGGLE_ABOUT", open: true })} onClose={openQuitConfirm} />}

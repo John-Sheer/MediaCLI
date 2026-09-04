@@ -1256,46 +1256,74 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
 
   return createPortal(<>
     {!fullscreen && hidden && currentSong && (
-      <button
+      <div
         ref={pillRef}
         data-tutorial="pill-gestures"
         onAnimationEnd={() => { pillSeenOnce.current = true; }}
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (pillSuppressClick.current) return;
-          autoOpenRef.current = false;
-          // AUDIO : jamais de lecteur complet (on reste en pilule).
-          if (isAudioLike) return;
-          setHidden(false);
-          clearTimeout(collapseTimerRef.current);
-          collapseTimerRef.current = setTimeout(() => setHidden(true), 1000);
-        }}
-        title="Afficher le lecteur"
         style={{ bottom: "calc(52px + var(--sab, 0px))", transform: "translate(-50%, 0)" }}
         onTouchStart={pillTouchStart}
         onTouchMove={pillTouchMove}
         onTouchEnd={pillTouchEnd}
         onTouchCancel={pillTouchEnd}
-        className={`fixed left-1/2 z-[9999] flex items-center gap-2 rounded-full pl-1 pr-4 py-1.5 bg-accent-red text-white ring-1 ring-white/15 shadow-[0_6px_20px_-4px_rgba(0,0,0,0.5)] hover:brightness-110 active:scale-95 transition-all duration-200 touch-none ${pillSeenOnce.current ? "" : "animate-pill-in"}`}
+        className={`fixed left-1/2 z-[9999] flex items-center gap-1.5 rounded-full pl-1 pr-1.5 py-1.5 bg-accent-red text-white ring-1 ring-white/15 shadow-[0_6px_20px_-4px_rgba(0,0,0,0.5)] transition-all duration-200 touch-none select-none ${pillSeenOnce.current ? "" : "animate-pill-in"}`}
       >
-        <span className="relative w-8 h-8 rounded-full overflow-hidden shrink-0 bg-black/40 ring-2 ring-white/20">
-          <img
-            src={getThumb(currentSong.thumbnail) ? thumbUrl(currentSong.thumbnail) : ""}
-            className="w-full h-full object-cover"
-            alt=""
-            draggable="false"
-            onError={(e) => { e.currentTarget.style.display = "none"; }}
-          />
-          <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <Music className="w-4 h-4 text-white/85" />
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (pillSuppressClick.current) return;
+            autoOpenRef.current = false;
+            if (isAudioLike) return;
+            setHidden(false);
+            clearTimeout(collapseTimerRef.current);
+            collapseTimerRef.current = setTimeout(() => setHidden(true), 1000);
+          }}
+          title="Afficher le lecteur"
+          className="flex items-center gap-2 rounded-full hover:brightness-110 transition-all"
+        >
+          <span className="relative w-8 h-8 rounded-full overflow-hidden shrink-0 bg-black/40 ring-2 ring-white/20">
+            <img
+              src={getThumb(currentSong.thumbnail) ? thumbUrl(currentSong.thumbnail) : ""}
+              className="w-full h-full object-cover"
+              alt=""
+              draggable="false"
+              onError={(e) => { e.currentTarget.style.display = "none"; }}
+            />
+            <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <Music className="w-4 h-4 text-white/85" />
+            </span>
           </span>
-        </span>
-        <span className="max-w-[170px] truncate text-[11px] font-medium leading-tight">
-          {buffering ? "Chargement en coursâ€¦" : currentSong.title}
-        </span>
-        <span className="w-1.5 h-1.5 rounded-full bg-white/95 shadow-[0_0_8px_rgba(255,255,255,0.9)] animate-pulse" />
-      </button>
+          <span className="max-w-[150px] truncate text-[11px] font-medium leading-tight">
+            {buffering ? "Chargement en cours…" : currentSong.title}
+          </span>
+        </button>
+
+        <span className="hidden md:inline w-1.5 h-1.5 mx-0.5 shrink-0 rounded-full bg-white/95 shadow-[0_0_8px_rgba(255,255,255,0.9)] animate-pulse" />
+
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onPreviousRef.current?.(); }}
+            title="Piste précédente"
+            className="w-7 h-7 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/25 active:scale-90 transition-all"
+          >
+            <SkipBack size={15} />
+          </button>
+          <button
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); togglePlayRef.current(); }}
+            title={playing ? "Pause" : "Lecture"}
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-white text-accent-red hover:brightness-110 active:scale-90 transition-all"
+          >
+            {streamError ? <RefreshCw size={16} /> : buffering ? <Loader2 size={16} className="animate-spin" /> : playing ? <Pause size={16} /> : <Play className="ml-0.5" size={16} />}
+          </button>
+          <button
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onNextRef.current?.(); }}
+            title="Piste suivante"
+            className="w-7 h-7 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/25 active:scale-90 transition-all"
+          >
+            <SkipForward size={15} />
+          </button>
+        </div>
+      </div>
     )}
     <div
       ref={playerRef}
