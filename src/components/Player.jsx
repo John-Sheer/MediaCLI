@@ -9,6 +9,7 @@ import { thumbUrl, getThumb } from "../lib/thumb.js";
 import Tooltip from "./Tooltip.jsx";
 
 const IS_ANDROID = /android/i.test(navigator.userAgent || "");
+const RANGE_VOL = 320;
 
 function VolumeControl({ volume, onMute, onVolume, showVolume, showVolumeNow, showVolumeWithDelay, hideVolumeWithDelay, size = 14, sliderH = 22 }) {
   const toggle = (e) => {
@@ -129,6 +130,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
   });
   const [videoMuted, setVideoMuted] = useState(true);
   const [showVolume, setShowVolume] = useState(false);
+  const volNowRef = useRef(volume);
   const [showVolPct, setShowVolPct] = useState(false);
   const volPctTimer = useRef(null);
   const volumeTimerRef = useRef(null);
@@ -195,6 +197,8 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
   const swipeFeedbackTimer = useRef(null);
   const pillRef = useRef(null);
   const pillSwipe = useRef(null);
+  const volTimerRef = useRef(null);
+  useEffect(() => () => { if (volTimerRef.current) { clearInterval(volTimerRef.current); volTimerRef.current = null; } }, []);
   const pillSuppressClick = useRef(false);
   const pillSeenOnce = useRef(false);
   const lastNavAtRef = useRef(0);
@@ -614,6 +618,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
 
   const handleVolume = (e) => {
     const v = Number(e.target.value);
+    volNowRef.current = v;
     setVolume(v);
     if (v > 0) lastVolumeRef.current = v;
     if (videoRef.current) { videoRef.current.volume = v; setVideoMuted(v === 0); }
@@ -859,14 +864,16 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
   const playerTouchStart = (e) => {
     if (e.target && e.target.closest && e.target.closest("button, input, select, a, [role='slider']")) return;
     const t = e.touches ? e.touches[0] : e;
-    playerSwipe.current = { startY: t.clientY, startX: t.clientX, dy: 0, dx: 0, isVertical: false };
+    playerSwipe.current = { startY: t.clientY, startX: t.clientX, dy: 0, dx: 0, isVertical: false, startTime: Date.now() };
+    handleDragStart(e);
   };
   const playerTouchEnd = () => {
     const sw = playerSwipe.current;
     playerSwipe.current = null;
     if (!sw) return;
-    // Geste descendant marqué et dominant = replier en pillule.
-    if (sw.dy > 70 && Math.abs(sw.dy) > Math.abs(sw.dx)) {
+    // Geste descendant marqué, dominant et RAPIDE = replier en pillule.
+    // Un toucher lent (positionnement libre du lecteur) ne replie pas.
+    if (sw.dy > 70 && Math.abs(sw.dy) > Math.abs(sw.dx) && Date.now() - sw.startTime < 250) {
       clearTimeout(collapseTimerRef.current);
       setHidden(true);
       setFullscreen(false);
@@ -890,8 +897,9 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
   };
 
   const pillTouchStart = (e) => {
+    if (volTimerRef.current) { clearInterval(volTimerRef.current); volTimerRef.current = null; }
     const t = e.touches ? e.touches[0] : e;
-    pillSwipe.current = { startX: t.clientX, startY: t.clientY, dx: 0, dy: 0, moved: false, startTime: Date.now(), scrub: false, scrubBaseProgress: progress, axis: null, scrubbed: false };
+    pillSwipe.current = { startX: t.clientX, startY: t.clientY, dx: 0, dy: 0, moved: false, startTime: Date.now(), scrub: false, scrubBaseProgress: progress, axis: null, scrubbed: false, volMode: false, volBase: 0, volStartDy: 0, volDir: 0, volAnchorDy: 0, volAuto: 0 };
   };
 
   const pillTouchMove = (e) => {
@@ -910,6 +918,41 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       sw.axis = Math.abs(sw.dx) >= Math.abs(sw.dy) ? 'x' : 'y';
     }
     if (sw.axis === 'y') {
+      const elapsed = Date.now() - sw.startTime;
+      if (!sw.volMode && elapsed >= 1000) {
+        // Maintien long vertical : la pilule devient un contrôle de volume.
+        // Le geste classe vertical reste traduit en volume tant qu'on ne
+        // relâche pas — pas de play/pause ni d'ouverture du lecteur.
+        sw.volMode = true;
+        sw.volBase = volNowRef.current;
+        sw.volStartDy = sw.dy;
+        sw.volDir = 0;
+        sw.volAuto = 0;
+        if (!volTimerRef.current) {
+          volTimerRef.current = setInterval(() => {
+            const s = pillSwipe.current;
+            if (!s || !s.volMode || s.volDir === 0) return;
+            // Rampe automatique : tant que le doigt reste appuyé, le volume
+            // continue d'avancer dans la direction choisie, même si la main
+            // ne bouge plus (plus d'espace sur l'écran).
+            s.volAuto += s.volDir * 0.012;
+            const nv = Math.min(1, Math.max(0, s.volBase + (s.volStartDy - s.dy) / RANGE_VOL + s.volAuto));
+            volNowRef.current = nv;
+            handleVolumeRef.current({ target: { value: nv } });
+            try { window.dispatchEvent(new CustomEvent("media-gesture", { detail: { kind: "volume", value: Math.round(nv * 100) } })); } catch {}
+          }, 60);
+        }
+      }
+      if (sw.volMode) {
+        const manual = (sw.volStartDy - sw.dy) / RANGE_VOL;
+        if (Math.abs(sw.volStartDy - sw.dy) > 12) {
+          sw.volDir = (sw.volStartDy - sw.dy) > 0 ? 1 : -1;
+        }
+        const newVol = Math.min(1, Math.max(0, sw.volBase + manual + sw.volAuto));
+        volNowRef.current = newVol;
+        handleVolumeRef.current({ target: { value: newVol } });
+        try { window.dispatchEvent(new CustomEvent("media-gesture", { detail: { kind: "volume", value: Math.round(newVol * 100) } })); } catch {}
+      }
       const el = pillRef.current;
       if (el) {
         el.style.transition = 'none';
@@ -966,6 +1009,15 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       }
     };
     const backAfter = (ms, transition) => setTimeout(() => back(transition), ms);
+    // Swipe long vertical (>= 1000 ms) : c'était un contrôle de volume, on
+    // revient simplement en position neutre sans play/pause ni ouverture.
+    if (sw.volMode) {
+      if (volTimerRef.current) { clearInterval(volTimerRef.current); volTimerRef.current = null; }
+      pillSuppressClick.current = true;
+      back();
+      setTimeout(() => { pillSuppressClick.current = false; }, 450);
+      return;
+    }
     const threshold = dy < 0 ? THRESHOLD_UP : THRESHOLD_DOWN;
     // Tap simple sur la pillule : pour une vidÃ©o, ouvrir le lecteur. Pour un
     // audio, ne JAMAIS ouvrir le lecteur normal : on reste en pilule. Le tap
@@ -976,13 +1028,9 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
       setTimeout(() => { pillSuppressClick.current = false; }, 300);
       autoOpenRef.current = false;
       clearTimeout(collapseTimerRef.current);
-      if (isAudioLike) {
-        // AUDIO : aucun lecteur complet, pas de geste d'ouverture. Rien.
-        return;
-      }
-      setHidden(false);
-      showControlsTempRef.current?.();
-      collapseTimerRef.current = setTimeout(() => setHidden(true), 1000);
+      // Tap : demander la liste de ramener le média en cours de lecture dans le
+      // champ de vision (local et streaming), au lieu d'ouvrir le lecteur.
+      try { window.dispatchEvent(new CustomEvent("mediacli-scroll-playing")); } catch {}
       return;
     }
     // Gesture verticale (haut = dÃ©plier le lecteur [jamais pour un audio], bas = play/pause).
@@ -1256,6 +1304,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
 
   return createPortal(<>
     {!fullscreen && hidden && currentSong && (
+      <>
       <button
         ref={pillRef}
         data-tutorial="pill-gestures"
@@ -1272,7 +1321,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
           collapseTimerRef.current = setTimeout(() => setHidden(true), 1000);
         }}
         title="Afficher le lecteur"
-        style={{ bottom: "calc(52px + var(--sab, 0px))", transform: "translate(-50%, 0)" }}
+        style={{ bottom: "calc(70px + var(--sab, 0px))", transform: "translate(-50%, 0)" }}
         onTouchStart={pillTouchStart}
         onTouchMove={pillTouchMove}
         onTouchEnd={pillTouchEnd}
@@ -1296,6 +1345,7 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
         </span>
         <span className="w-1.5 h-1.5 rounded-full bg-white/95 shadow-[0_0_8px_rgba(255,255,255,0.9)] animate-pulse" />
       </button>
+      </>
     )}
     <div
       ref={playerRef}
@@ -1386,9 +1436,9 @@ export default function Player({ currentSong, streamUrl, onClose, onNext, onPrev
         )}
         {swipeFeedback && (
           <div className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none">
-            <div className="flex flex-col items-center gap-1.5 bg-black/60 backdrop-blur-sm rounded-2xl px-5 py-3 ring-1 ring-white/10 animate-fade-in">
-              <swipeFeedback.icon className="w-6 h-6 text-white/90" />
-              <span className="text-xs font-medium text-white/90">{swipeFeedback.label}</span>
+            <div className="flex flex-col items-center gap-1.5 bg-black/60 backdrop-blur-sm rounded-2xl px-5 py-3 ring-1 ring-accent-red/40 animate-fade-in">
+              <swipeFeedback.icon className="w-6 h-6 text-accent-red" />
+              <span className="text-xs font-medium text-accent-red">{swipeFeedback.label}</span>
             </div>
           </div>
         )}

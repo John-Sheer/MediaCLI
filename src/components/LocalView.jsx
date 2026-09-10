@@ -251,7 +251,7 @@ function SongNameRow({ file, folderLabel, sizeLabel, index, playing, onPlay, dra
   );
 }
 
-export function LocalView({ state, actions, onPlayFile, playlists, onAddToPlaylist, onCreateAndAdd }) {
+export function LocalView({ state, actions, onPlayFile, playlists, onAddToPlaylist, onCreateAndAdd, revealSignal = 0 }) {
   const { localDirs, localScanning, localError, localFolder, localFiles, localFolderError, localFolderLoading } = state;
 
   const scannedRef = useRef(false);
@@ -318,9 +318,35 @@ export function LocalView({ state, actions, onPlayFile, playlists, onAddToPlayli
 
   const playingPath =
     state.streamUrl && state.streamUrl.includes("/local?path=")
-      ? decodeURIComponent(state.streamUrl.split("path=")[1])
+      ? decodeURIComponent(state.streamUrl.split("path=")[1].split("&")[0])
       : null;
   const playingFolder = playingPath ? playingPath.replace(/[\\\/][^\\\/]*$/, "") : null;
+
+  // Tap pilule : ramener la ligne du média en cours dans le champ de vision.
+  // Si la piste jouée est dans un autre dossier, on l'ouvre d'abord.
+  const pendingReveal = useRef(null);
+  useEffect(() => {
+    if (!revealSignal || !playingPath) return;
+    if (playingFolder && playingFolder !== localFolder) {
+      pendingReveal.current = playingPath;
+      actions.openFolder(playingFolder);
+      return;
+    }
+    if (playingRowRef.current) {
+      setTimeout(() => playingRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 80);
+    }
+  }, [revealSignal]);
+
+  // Dès que le dossier de la piste jouée est chargé après un « reveal », on
+  // scrolle vers sa ligne.
+  useEffect(() => {
+    if (!pendingReveal.current) return;
+    if (localFolder !== playingFolder) return;
+    pendingReveal.current = null;
+    if (playingRowRef.current) {
+      setTimeout(() => playingRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
+    }
+  }, [localFolder, localFiles.length, playingFolder]);
 
   const openFolder = (path) => {
     if (localFolder === path) {

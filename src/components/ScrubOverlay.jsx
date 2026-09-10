@@ -16,7 +16,7 @@ export default function ScrubOverlay() {
     };
     const onGesture = (e) => {
       const d = e.detail || {};
-      setGesture({ kind: d.kind || "" });
+      setGesture({ kind: d.kind || "", value: d.value });
       if (gTimer) clearTimeout(gTimer);
       gTimer = setTimeout(() => setGesture(null), 900);
     };
@@ -31,15 +31,17 @@ export default function ScrubOverlay() {
   }, []);
 
   const GESTURES = {
-    play: { label: "PLAY", fill: "#4ea1ff" },
+    play: { label: "PLAY", fill: "#ff3b5c" },
     pause: { label: "PAUSE", fill: "#ff3b5c" },
-    next: { label: "NEXT", fill: "#4ea1ff" },
+    next: { label: "NEXT", fill: "#ff3b5c" },
     previous: { label: "PREVIOUS", fill: "#ff3b5c" },
   };
 
   const current = gesture && GESTURES[gesture.kind];
+  const isVolume = gesture && gesture.kind === "volume";
+  const volValue = isVolume ? gesture.value : null;
 
-  if (!info && !current) return null;
+  if (!info && !current && !isVolume) return null;
 
   const pos = Number(info?.position) || 0;
   const dur = Number(info?.duration) || 0;
@@ -58,9 +60,14 @@ export default function ScrubOverlay() {
           {current.label}
         </span>
       ) : null}
+      {isVolume && (
+        <span style={{ fontSize: 18, fontWeight: 800, letterSpacing: 1, color: "#ff3b5c" }}>
+          VOLUME {volValue != null ? `${volValue}%` : ""}
+        </span>
+      )}
       {info ? (
         <>
-          <span style={{ fontSize: 22, fontWeight: 700, color: delta >= 0 ? "#ff3b5c" : "#4ea1ff" }}>
+          <span style={{ fontSize: 22, fontWeight: 700, color: "#ff3b5c" }}>
             {delta >= 0 ? "+" : "-"}{Math.abs(Math.round(delta))}s
           </span>
           <span style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", fontVariantNumeric: "tabular-nums" }}>

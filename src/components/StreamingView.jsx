@@ -203,42 +203,36 @@ function SearchLabel() {
   );
 }
 
-export function StreamingView({ state, onSearch, onLoadMore, onPlay, onDownload, onTogglePause, onQueryChange, onMenuToggle, onAddToPlaylist, onCreateAndAdd, onOpenDownloads, onResume, onAuthorize, onOpenPlayer, onStreamPlay }) {
+export function StreamingView({ state, onSearch, onLoadMore, onPlay, onDownload, onTogglePause, onQueryChange, onMenuToggle, onAddToPlaylist, onCreateAndAdd, onOpenDownloads, onResume, onAuthorize, onOpenPlayer, onStreamPlay, revealSignal = 0 }) {
   const { results, loading, searchError, query, menuSongId, downloadStatus, downloadProgress, downloadPaused, downloadErrors, playlists, currentSong, isLocal, moreLoading, moreVariants } = state;
   const activeCount = Object.values(downloadStatus).filter((s) => s === "downloading").length;
 
   const [revealedId, setRevealedId] = useState(null);
   const searchRef = useRef(null);
+  const resultsHeaderRef = useRef(null);
   const [searchAway, setSearchAway] = useState(false);
   const [fabTop, setFabTop] = useState(null);
   const moreRef = useRef(null);
 
   useEffect(() => {
-    const el = searchRef.current;
-    if (!el) return;
-    const tabs = document.querySelector("[data-tabs]");
-    if (tabs) setFabTop(tabs.getBoundingClientRect().bottom + 10);
+    const sat = parseInt(window.getComputedStyle(document.documentElement).getPropertyValue("--sat"), 10) || 24;
+    setFabTop(sat + 44);
     const updater = () => {
-      const r = el.getBoundingClientRect();
-      let away = false;
-      if (tabs) {
-        away = r.bottom < tabs.getBoundingClientRect().bottom;
+      const bande = resultsHeaderRef.current;
+      if (bande) {
+        setFabTop(bande.getBoundingClientRect().bottom + 8);
+        setSearchAway(true);
       } else {
-        away = r.bottom < 0;
+        setSearchAway(false);
       }
-      setSearchAway(away);
     };
     updater();
-    const targets = [window];
-    let node = el.parentElement;
-    while (node && node !== document.documentElement) {
-      const s = getComputedStyle(node).overflowY;
-      if (s === "auto" || s === "scroll" || s === "overlay") targets.push(node);
-      node = node.parentElement;
-    }
-    const onScroll = () => updater();
-    targets.forEach((t) => t.addEventListener("scroll", onScroll, { passive: true }));
-    return () => targets.forEach((t) => t.removeEventListener("scroll", onScroll));
+    window.addEventListener("resize", updater);
+    window.addEventListener("orientationchange", updater);
+    return () => {
+      window.removeEventListener("resize", updater);
+      window.removeEventListener("orientationchange", updater);
+    };
   }, [results.length, loading, query]);
 
   // Scroll infini : dès que la sentinelle de fin de liste devient visible, on
@@ -256,6 +250,13 @@ export function StreamingView({ state, onSearch, onLoadMore, onPlay, onDownload,
     io.observe(el);
     return () => io.disconnect();
   }, [results.length, moreLoading, moreVariants.length, query, onLoadMore]);
+
+  // Tap pilule : ramener la carte du média en cours de lecture dans la vue.
+  useEffect(() => {
+    if (!revealSignal || !currentSong) return;
+    const card = document.querySelector(`[data-songcard][data-song-id="${CSS.escape(String(currentSong.id))}"]`);
+    if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [revealSignal, currentSong]);
 
   const scrollToSearch = () => {
     const el = searchRef.current;
@@ -304,6 +305,7 @@ export function StreamingView({ state, onSearch, onLoadMore, onPlay, onDownload,
       {!loading && results.length > 0 && (
         <>
           <div
+            ref={resultsHeaderRef}
             className="sticky top-0 z-40 backdrop-blur-2xl bg-bg/80 px-4 pt-2 pb-2.5"
             onMouseLeave={() => onMenuToggle(null)}
           >
@@ -401,7 +403,7 @@ export function StreamingView({ state, onSearch, onLoadMore, onPlay, onDownload,
         <button
           onClick={scrollToSearch}
           className="fixed right-4 z-30 w-11 h-11 rounded-full bg-accent-red/90 text-white flex items-center justify-center shadow-[0_4px_24px_-4px_rgba(200,30,58,0.7)] hover:bg-glow active:scale-95 transition-all duration-200 animate-fade-in"
-          style={{ top: (fabTop ?? 150) + 110 }}
+          style={{ top: fabTop ?? 260 }}
         >
           <Search className="w-4 h-4" />
         </button>

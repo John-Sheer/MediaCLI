@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { TitleBar } from "./components/TitleBar.jsx";
-import { Footer } from "./components/Footer.jsx";
 import { HomeHeader, HomeTabs } from "./components/HomeHeader.jsx";
 import { StreamingView, NowPlayingBar } from "./components/StreamingView.jsx";
 import { LocalView } from "./components/LocalView.jsx";
@@ -33,6 +32,7 @@ export default function App() {
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   const [permDenied, setPermDenied] = useState(false);
   const [playerReveal, setPlayerReveal] = useState(0);
+  const [listReveal, setListReveal] = useState(0);
 
   // Migration : on force le flag de l'ancien onboarding à "vu" (il ne sert plus),
   // mais ON ne désactive PAS le nouveau système de tutoriels contextuels : ils
@@ -135,6 +135,18 @@ export default function App() {
       window.removeEventListener("quit-requested", onDomQuit);
     };
   }, []);
+
+  // Tap sur la pilule : ramener le média en cours de lecture dans le champ de
+  // vision de la liste (local ou streaming selon l'origine de la piste).
+  useEffect(() => {
+    const onScrollPlaying = () => {
+      const target = state.isLocal ? "local" : "streaming";
+      if (state.homeTab !== target) switchTab(target);
+      setListReveal((n) => n + 1);
+    };
+    window.addEventListener("mediacli-scroll-playing", onScrollPlaying);
+    return () => window.removeEventListener("mediacli-scroll-playing", onScrollPlaying);
+  }, [state.isLocal, state.homeTab]);
 
   const confirmQuit = () => {
     pausedMediaRef.current = null;
@@ -288,8 +300,8 @@ export default function App() {
             torActive={state.torActive}
             onToggleTor={handleVpnToggle}
             onAbout={() => dispatch({ type: "TOGGLE_ABOUT", open: true })}
+            onSettings={() => setShowSettings(true)}
           />
-          <HomeTabs data-tabs homeTab={state.homeTab} onSwitch={switchTab} playlistCount={Object.keys(state.playlists).length} />
           {state.homeTab === "streaming" &&
             !state.loading &&
             state.results.length === 0 &&
@@ -328,11 +340,12 @@ export default function App() {
                 onAuthorize={handleAuthorizeAccess}
                 onOpenPlayer={() => setPlayerReveal((n) => n + 1)}
                 onStreamPlay={actions.streamPlay}
+                revealSignal={listReveal}
               />
             )}
 
             {state.homeTab === "local" && (
-              <LocalView state={state} actions={actions} onPlayFile={playLocalFile} playlists={state.playlists} onAddToPlaylist={handleAddToPlaylist} onCreateAndAdd={handleCreateAndAdd} />
+              <LocalView state={state} actions={actions} onPlayFile={playLocalFile} playlists={state.playlists} onAddToPlaylist={handleAddToPlaylist} onCreateAndAdd={handleCreateAndAdd} revealSignal={listReveal} />
             )}
 
             {state.homeTab === "playlists" && (
@@ -350,10 +363,18 @@ export default function App() {
               />
             )}
 
-            <Footer onSettings={() => setShowSettings(true)} />
-          </div>
+            </div>
         </div>
       </div>
+
+      {!state.playerFullscreen && (
+        <nav className="fixed bottom-0 left-0 right-0 z-40 backdrop-blur-xl bg-black/40" style={{ paddingBottom: `var(--sab, 0px)` }}>
+          <div className="max-w-2xl mx-auto px-5">
+            <div className="h-px" style={{ background: `linear-gradient(to right, transparent, rgba(255,59,92,0.25), transparent)` }} />
+          </div>
+          <HomeTabs data-tabs homeTab={state.homeTab} onSwitch={switchTab} playlistCount={Object.keys(state.playlists).length} />
+        </nav>
+      )}
 
       <Player
         currentSong={state.currentSong}

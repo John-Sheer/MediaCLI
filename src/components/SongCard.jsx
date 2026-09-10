@@ -71,10 +71,16 @@ export default function SongCard({ song, onPlay, onDownload, onTogglePause, stat
     const isPaused = !!paused?.[type] && isDownloading;
     const percent = progress?.[type] || 0;
     const size = type === "audio" ? (song.audioSize ? (song.audioSize / 1048576).toFixed(1) : mp3Size) : (song.videoSize ? (song.videoSize / 1048576).toFixed(1) : mp4Size);
+    const totalMo = size ? parseFloat(size) : null;
+    const downloadedMo = isDownloading && totalMo != null ? (percent / 100) * totalMo : null;
     const meta = isDownloading
       ? isPaused
-        ? `${Math.round(percent)}% · pause`
-        : `${Math.round(percent)}%`
+        ? downloadedMo != null
+          ? `${downloadedMo.toFixed(1)}/${size} Mo · pause`
+          : `${Math.round(percent)}% · pause`
+        : downloadedMo != null
+          ? `${downloadedMo.toFixed(1)}/${size} Mo`
+          : `${Math.round(percent)}%`
       : isDone
         ? "terminé"
         : isError
@@ -153,7 +159,7 @@ export default function SongCard({ song, onPlay, onDownload, onTogglePause, stat
   };
 
   return (
-    <div className="relative animate-fade-in" data-songcard>
+    <div className="relative animate-fade-in" data-songcard data-song-id={song.id}>
       <div
         onClick={() => { if (!isPlaying && onReveal) onReveal(); }}
         data-tutorial={tutorial}
@@ -176,10 +182,12 @@ export default function SongCard({ song, onPlay, onDownload, onTogglePause, stat
 
           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/25 transition-all duration-300 flex items-center justify-center">
             {isPlaying ? (
-              <span className="inline-flex items-center justify-center gap-[3px] px-3 py-2 rounded-full bg-black/50 backdrop-blur-md ring-1 ring-white/15" aria-label="En lecture">
-                <span className="w-[3px] h-3 rounded-sm bg-accent-red playing-bar" style={{ animationDelay: "0ms" }} />
-                <span className="w-[3px] h-3 rounded-sm bg-accent-red playing-bar" style={{ animationDelay: "-330ms" }} />
-                <span className="w-[3px] h-3 rounded-sm bg-accent-red playing-bar" style={{ animationDelay: "-660ms" }} />
+              <span className="inline-flex items-center justify-center px-3 py-2 rounded-full bg-black/50 backdrop-blur-md ring-1 ring-white/15" aria-label="En lecture">
+                <span className="flex items-end gap-[3px] h-3">
+                  <span className="w-[3px] rounded-sm bg-accent-red playing-bar" style={{ animationDelay: "0ms" }} />
+                  <span className="w-[3px] rounded-sm bg-accent-red playing-bar" style={{ animationDelay: "-330ms" }} />
+                  <span className="w-[3px] rounded-sm bg-accent-red playing-bar" style={{ animationDelay: "-660ms" }} />
+                </span>
               </span>
             ) : showPlay ? (
               <Tooltip label="Lecture">
