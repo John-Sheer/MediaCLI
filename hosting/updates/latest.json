@@ -1,15 +1,15 @@
-﻿{
+{
+    "version":  "0.1.31",
+    "notes":  "Mise a jour MediaCLI 0.1.31 (Windows + Android).",
+    "pub_date":  "2026-09-10T14:31:59Z",
     "platforms":  {
-                      "windows-x86_64":  {
-                                             "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.28/MediaCLI-Setup.exe",
-                                             "signature":  "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUhOcFoyNWhkSFZ5WlNCbWNtOXRJSFJoZFhKcElITmxZM0psZENCclpYa0tVbFZSVDBObWJFbFZWWEIxYVVKak5VbE9aamhYWkhKRFRrTmlVVXRsTUUxUGJFRkxNWGRhTmprcmREQTFTWGw1U2poWE4wZGhRMk5sUW0xb1JXcHhSekV6T1hSc05HeEZWa1ppU0RCd1VGTlpZVGgyYzBKRVIxTTRjRzQyWWtaNFFtZHpQUXAwY25WemRHVmtJR052YlcxbGJuUTZJSFJwYldWemRHRnRjRG94TnpnNE5UTTNPREF4Q1dacGJHVTZUV1ZrYVdGRFRFbGZNQzR4TGpJNFgzZzJOQzF6WlhSMWNDNWxlR1VLVURJMEwzaHRjbXgxSzI1VmFtNDRSREZrWW14NE9WZHdMMVJHWW1NelZXVlJhR1ZYSzJkTWQzRjNTbGM0Y3pkUWRtZENZVEpGWVRVeVNIUm5ha0ptTlVNclprWlROSFZuYkc0NFFXTTNNSGhVTms5cFJFRTlQUW89"
-                                         },
                       "android-arm64":  {
-                                            "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.28/MediaCLI.apk",
+                                            "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.31/MediaCLI.apk",
                                             "signature":  ""
-                                        }
-                  },
-    "pub_date":  "2026-09-04T16:03:21Z",
-    "version":  "0.1.28",
-    "notes":  "Mises Ã  jour depuis l\u0027application (Windows + Android), stabilitÃ© et correctifs."
+                                        },
+                      "windows-x86_64":  {
+                                             "url":  "https://github.com/John-Sheer/MediaCLI/releases/download/v0.1.31/MediaCLI-Setup.exe",
+                                             "signature":  "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUhOcFoyNWhkSFZ5WlNCbWNtOXRJSFJoZFhKcElITmxZM0psZENCclpYa0tVbFZSVDBObWJFbFZWWEIxYVV3eVN6aGhlRzFhUkcxalVVNXFaRlZYT0ZSNGEwUlZWVGxVUVhWYWRsQjNMM0pLWkVKdmFXMXRXWGhZWVdvNVQySjRaRk54WmpKa09HRm9OMWRUZWxjMFNVcGFTVXROY0N0aVdFeHlibkZwTDFKdVRXZHZQUXAwY25WemRHVmtJR052YlcxbGJuUTZJSFJwYldWemRHRnRjRG94TnpnNE5UQTFNemcxQ1dacGJHVTZUV1ZrYVdGRFRFbGZNQzR4TGpNd1gzZzJOQzF6WlhSMWNDNWxlR1VLV2pOelJWVnVXVE16UkV0eGEwOW9ZMmQwZG5BME9HWktRWFZ0UjNoa01qQmtjbk5hWlhNemNVNXpaRVpEUmpJM0x6VXZNV1kwTmlzclVGbFVORzh5VlV4dGVqVTRSamxyVEZGSVNTOTVTR2RGTkVoYVFsRTlQUW89"
+                                         }
+                  }
 }
